@@ -759,7 +759,6 @@ def get_td_from_final_mass_spin(template=None, taper=None,
     """
 
     input_params = props(template, mass_spin_required_args, **kwargs)
-
     # Get required args
     final_mass = input_params['final_mass']
     final_spin = input_params['final_spin']
@@ -771,6 +770,7 @@ def get_td_from_final_mass_spin(template=None, taper=None,
     # following may not be in input_params
     delta_t = input_params.pop('delta_t', None)
     t_final = input_params.pop('t_final', None)
+    distance = input_params.pop('distance', None)
 
     f_0, tau = get_lm_f0tau_allmodes(final_mass, final_spin, lmns)
 
@@ -804,7 +804,6 @@ def get_td_from_final_mass_spin(template=None, taper=None,
         else:
             outplus = taper_shift(hplus, outplus)
             outcross = taper_shift(hcross, outcross)
-
     norm = Kerr_factor(final_mass, distance) if distance else 1.
     return norm*outplus, norm*outcross
 
@@ -876,6 +875,7 @@ def get_fd_from_final_mass_spin(template=None, distance=None, **kwargs):
     delta_f = input_params.pop('delta_f', None)
     f_lower = input_params.pop('f_lower', None)
     f_final = input_params.pop('f_final', None)
+    distance = input_params.pop('distance', None)
 
     f_0, tau = get_lm_f0tau_allmodes(final_mass, final_spin, lmns)
 
