@@ -33,6 +33,7 @@ import copy
 import numpy
 import lal
 import lalsimulation as lalsim
+from scipy import constants
 from pycbc.detector import Detector
 import pycbc.cosmology
 from .coordinates import spherical_to_cartesian as _spherical_to_cartesian
@@ -1289,6 +1290,95 @@ def final_spin_from_initial(mass1, mass2, spin1x=0., spin1y=0., spin1z=0.,
     """
     return get_final_from_initial(mass1, mass2, spin1x, spin1y, spin1z,
                                   spin2x, spin2y, spin2z, approximant)[1]
+
+def echo_freq_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon):
+    """Calculates the frequency of the echo signal in arxiv:1811.12283v3
+       from the final mass and spin.
+    
+    Parameters
+    ----------
+    final_mass : float
+        The mass of the final black hole, in solar masses.
+    final_spin : float
+        The dimensionless spin of the final black hole.
+    epsilon : float
+        
+
+    Returns
+    -------
+    float
+        The echo frequency in Hertz.
+    """
+    s_sqrt = numpy.sqrt(1. - final_spin**2.)
+    final_mass_msun = final_mass * lal.lal.MSUN_SI
+    si_factor = constants.c**3. / constants.G #4.037111095068382 * 10**35.
+    return si_factor * (final_spin / (2. * numpy.pi * final_mass_msun * (1.+s_sqrt)) \
+            - s_sqrt / (4. * final_mass_msun * numpy.abs(numpy.log(epsilon)) * (1.+s_sqrt)))
+
+
+def echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon):
+    """Calculates the damping time tau of the echo signal in arxiv:1811.12283v3 
+       from the deviation epsilon and the final mass and spin. 
+    
+    Parameters
+    ----------
+    final_mass : float
+        The mass of the final black hole, in solar masses.
+    final_spin : float
+        The dimensionless spin of the final black hole.
+    epsilon : float
+        The dimensionless deviation parameter.
+    
+    Returns
+    -------
+    float
+        The damping time of the echo in seconds. 
+    """
+    s = 1. - final_spin**2.
+    si_factor = constants.G / (constants.c**3.) #2.477018780141005 * 10**(-36.)
+    return si_factor * ((450. * final_mass * lal.lal.MSUN_SI * \
+            (1.+numpy.sqrt(s))**6. * numpy.abs(numpy.log(epsilon))**7.) \
+            / (numpy.pi * s**3. * (2. * final_spin \ 
+                * numpy.abs(numpy.log(epsilon)) - numpy.pi * numpy.sqrt(s))**5.))
+
+
+def echo_amp_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon, 
+                                            distance, e_init, alpha=1.):
+    """Calculates the amplitude of the echo signal in arxiv:1811.12283v3 
+       from the deviation epsilon and the final mass and spin. 
+    
+    Parameters
+    ----------
+    final_mass : float
+        The mass of the final black hole, in solar masses.
+    final_spin : float
+        The dimensionless spin of the final black hole.
+    epsilon : float
+        The dimensionless deviation parameter.
+    distance : float
+        Luminosity distance in kpc. 
+    e_init : float
+        Initial energy available to produce echoes, in solar masses.
+    alpha : float, optional
+        Scaling factor for echo amplitude, from 0 to 1.
+    
+    Returns
+    -------
+    float
+        The amplitude of the echo. 
+    """
+    return (alpha / (distance * 1.e3 * constants.parsec)) \ 
+    * numpy.sqrt( \
+    (16. * constants.G / \
+    (constants.c**3. * \
+    (2. * numpy.pi * \
+    echo_freq_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon))**2.\
+     * echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon)) \
+    ) \
+    * (final_mass * lal.lal.MSUN_SI * final_spin**2. / \
+    (4. + 4. * numpy.sqrt(1.-final_spin**2.) - 2. * final_spin**2.) \
+    + e_init * lal.lal.MSUN_SI) \
+    )
 
 
 #
