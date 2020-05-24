@@ -1338,8 +1338,8 @@ def echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon):
     si_factor = constants.G / (constants.c**3.) #2.477018780141005 * 10**(-36.)
     return si_factor * ((450. * final_mass * lal.lal.MSUN_SI * \
             (1.+numpy.sqrt(s))**6. * numpy.abs(numpy.log(epsilon))**7.) \
-            / (numpy.pi * s**3. * (2. * final_spin \ 
-                * numpy.abs(numpy.log(epsilon)) - numpy.pi * numpy.sqrt(s))**5.))
+            / (numpy.pi * s**3. * (2. * final_spin \
+            * numpy.abs(numpy.log(epsilon)) - numpy.pi * numpy.sqrt(s))**5.))
 
 
 def echo_amp_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon, 
