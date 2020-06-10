@@ -1368,7 +1368,7 @@ def echo_amp_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
         The amplitude of the echo. 
     """
     return (alpha / (distance * 1.e3 * constants.parsec)) \
-    * numpy.sqrt( \
+    * constants.c * numpy.sqrt( \
     (16. * constants.G / \
     (constants.c**3. * \
     (2. * numpy.pi * \
