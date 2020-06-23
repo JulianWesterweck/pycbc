@@ -79,14 +79,10 @@ def format_lmns(lmns):
     # Case 1: the list is in a string "['221', '331']"
     # In Python3 this might be "[b'221', b'331']"
     if isinstance(lmns, str):
-#        print('I have been called. - Ringdown')
-#        print(lmns, type(lmns))
         # strip off brackets and convert to list
-#        lmns = lmns.strip('[]').split(',')
         for char in ["[", "]", "'", " ", "b"]:
             lmns = lmns.replace(char,'')
         lmns = lmns.split(',')
-#        print(lmns, type(lmns))
 
     # Case 2: a list with only one string with a list ["221', '331"]
     # In Python3 this might be ["b221', b'331"]
