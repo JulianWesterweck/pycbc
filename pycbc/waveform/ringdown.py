@@ -462,13 +462,16 @@ def fd_damped_sinusoid(f_0, tau, amp, phi, delta_f, f_lower, f_final, t_0=0.,
 #### Base multi-mode for all approximants
 ######################################################
 
-def multimode_base(input_params):
+def multimode_base(input_params, freq_tau_approximant=False):
     """Return a superposition of damped sinusoids in either time or frequency
     domains with parameters set by input_params.
     """
     input_params['lmns'] = format_lmns(input_params['lmns'])
     amps, phis = lm_amps_phases(**input_params)
-    if 'final_mass' in input_params.keys():
+    if freq_tau_approximant:
+        freqs, taus = lm_freqs_taus(**input_params)
+        norm = 1.
+    elif 'final_mass' in input_params.keys():
         freqs, taus = get_lm_f0tau_allmodes(input_params['final_mass'],
                         input_params['final_spin'], input_params['lmns'])
         norm = Kerr_factor(input_params['final_mass'],
@@ -702,7 +705,7 @@ def get_td_from_freqtau(template=None, **kwargs):
 
     input_params = props(template, freqtau_required_args, td_args, **kwargs)
 
-    return multimode_base(input_params)
+    return multimode_base(input_params, freq_tau_approximant=True)
 
 def get_fd_from_freqtau(template=None, **kwargs):
     """Return frequency domain ringdown with all the modes specified.
@@ -758,7 +761,7 @@ def get_fd_from_freqtau(template=None, **kwargs):
 
     input_params = props(template, freqtau_required_args, fd_args, **kwargs)
 
-    return multimode_base(input_params)
+    return multimode_base(input_params, freq_tau_approximant=True)
 
 # Approximant names ###########################################################
 ringdown_fd_approximants = {'FdQNMfromFinalMassSpin': get_fd_from_final_mass_spin,
