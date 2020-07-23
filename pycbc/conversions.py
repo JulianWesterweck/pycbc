@@ -1356,7 +1356,7 @@ def echo_amp_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
     epsilon : float
         The dimensionless deviation parameter.
     distance : float
-        Luminosity distance in kpc. 
+        Luminosity distance in Mpc. 
     e_init : float
         Initial energy available to produce echoes, in solar masses.
     alpha : float, optional
@@ -1367,7 +1367,7 @@ def echo_amp_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
     float
         The amplitude of the echo. 
     """
-    return (alpha / (distance * 1.e3 * constants.parsec)) \
+    return (alpha / (distance * 1.e6 * constants.parsec)) \
     * constants.c * numpy.sqrt( \
     (16. * constants.G / \
     (constants.c**3. * \
