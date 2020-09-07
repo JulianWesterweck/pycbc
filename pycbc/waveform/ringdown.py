@@ -79,14 +79,11 @@ def format_lmns(lmns):
     # Case 1: the list is in a string "['221', '331']"
     # In Python3 this might be "[b'221', b'331']"
     if isinstance(lmns, str):
-#        print('I have been called. - Ringdown')
-#        print(lmns, type(lmns))
         # strip off brackets and convert to list
 #        lmns = lmns.strip('[]').split(',')
         for char in ["[", "]", "'", " "]:
             lmns = lmns.replace(char,'')
         lmns = lmns.split(',')
-#        print(lmns, type(lmns))
 
     # Case 2: a list with only one string with a list ["221', '331"]
     # In Python3 this might be ["b221', b'331"]
@@ -481,14 +478,11 @@ def multimode_base(input_params, fd_approximant=False, td_approximant=False,
     else:
         freqs, taus = lm_freqs_taus(**input_params)
         norm = 1.
-    print("Choice of approximant (fd, td, freq/tau):")
-    print(fd_approximant, td_approximant, freq_tau_approximant)
     if not (fd_approximant or td_approximant):
         if 'delta_t' in input_params.keys():
             td_approximant = True
         elif 'delta_f' in input_params.keys():
             fd_approximant = True
-    print(fd_approximant, td_approximant, freq_tau_approximant)
     if td_approximant:
         outplus, outcross = td_output_vector(freqs, taus,
                             input_params['taper'], input_params['delta_t'],
@@ -518,23 +512,12 @@ def multimode_base(input_params, fd_approximant=False, td_approximant=False,
     elif fd_approximant:
         outplus, outcross = fd_output_vector(freqs, taus,
                             input_params['delta_f'], input_params['f_final'])
-        print('f_final, sample_freqs, len, data:')
-        print(input_params['f_final'])
-        print(outplus.sample_frequencies)
-        print(len(outplus.sample_frequencies))
-        print(outplus.data)
-        print(len(outplus.data))
         for lmn in freqs:
             hplus, hcross = fd_damped_sinusoid(freqs[lmn], taus[lmn],
                             amps[lmn], phis[lmn], outplus.delta_f,
                             input_params['f_lower'],
-                            outplus.sample_frequencies[-1], int(lmn[0]),
+                            input_params['f_final'], int(lmn[0]),
                             int(lmn[1]), input_params['inclination'])
-            print('sample_freqs, len, data:')
-            print(hplus.sample_frequencies)
-            print(len(hplus.sample_frequencies))
-            print(hplus.data)
-            print(len(hplus.data))
             outplus.data += hplus.data
             outcross.data += hcross.data
 
