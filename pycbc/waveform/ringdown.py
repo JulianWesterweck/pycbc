@@ -440,6 +440,7 @@ def fd_damped_sinusoid(f_0, tau, amp, phi, delta_f, f_lower, f_final, t_0=0.,
     denominator = 1 + (4j * pi * freqs * tau) - \
         (4 * pi_sq * (freqs*freqs - f_0*f_0) * tau*tau)
     norm = amp * tau / denominator
+    
     if t_0 != 0:
         time_shift = numpy.exp(-1j * two_pi * freqs * t_0)
         norm *= time_shift
@@ -516,8 +517,10 @@ def multimode_base(input_params, fd_approximant=False, td_approximant=False,
             hplus, hcross = fd_damped_sinusoid(freqs[lmn], taus[lmn],
                             amps[lmn], phis[lmn], outplus.delta_f,
                             input_params['f_lower'],
-                            input_params['f_final'], int(lmn[0]),
-                            int(lmn[1]), input_params['inclination'])
+                            input_params['f_final'], 
+                            l=int(lmn[0]),
+                            m=int(lmn[1]), 
+                            inclination=input_params['inclination'])
             outplus.data += hplus.data
             outcross.data += hcross.data
 
