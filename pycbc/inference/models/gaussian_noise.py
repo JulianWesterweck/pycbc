@@ -1241,8 +1241,9 @@ class GatedGaussianNoise(BaseGaussianNoise):
                             params['mass2'], params['spin1z'], params['spin2z'],
                             qm1=None, qm2=None)
                 # Find index of frequency <= meco_f
+                t_from_freq = time_from_frequencyseries(h)
                 f_idx = numpy.sum(h.sample_frequencies.numpy() <= meco_f) - 1
-                gatestartdelay = time_from_frequencyseries(h)[f_idx] + h.epoch
+                gatestartdelay = t_from_freq[f_idx]
 
             if self._kmin[det] >= kmax:
                 # if the waveform terminates before the filtering low frequency
