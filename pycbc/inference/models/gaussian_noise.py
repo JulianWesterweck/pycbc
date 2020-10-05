@@ -1203,7 +1203,7 @@ class GatedGaussianNoise(BaseGaussianNoise):
             gateend = params['t_gate_end']
             dgate = gateend-gatestart
         elif params['gate_window'] is not None:
-            dgate = params['gate_window']:
+            dgate = params['gate_window']
         else:
             raise ValueError("Gating accepts either start and end time \
             or duration.")
