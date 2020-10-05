@@ -1196,13 +1196,13 @@ class GatedGaussianNoise(BaseGaussianNoise):
             The value of the log likelihood ratio.
         """
         params = self.current_params
-        if params['t_gate_start'] is not None \
-        and params['t_gate_end'] is not None \
-        and params['gate_window'] is None:
+        if 't_gate_start' in params.keys() \
+        and 't_gate_end' in params.keys() \
+        and not 'gate_window' in params.keys():
             gatestart = params['t_gate_start']
             gateend = params['t_gate_end']
             dgate = gateend-gatestart
-        elif params['gate_window'] is not None:
+        elif 'gate_window' in params.keys():
             dgate = params['gate_window']
         else:
             raise ValueError("Gating accepts either start and end time \
