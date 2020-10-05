@@ -37,6 +37,8 @@ from .base_data import BaseDataModel
 from .data_utils import (data_opts_from_config, data_from_cli,
                          fd_data_from_strain_dict, gate_overwhitened_data)
 from pycbc.detector import Detector
+from pycbc.pnutils import hybrid_meco_frequency
+from pycbc.waveform.utils import time_from_frequencyseries
 
 
 @add_metaclass(ABCMeta)
@@ -1194,9 +1196,17 @@ class GatedGaussianNoise(BaseGaussianNoise):
             The value of the log likelihood ratio.
         """
         params = self.current_params
-        gatestart = params['t_gate_start']
-        gateend = params['t_gate_end']
-        dgate = gateend-gatestart
+        if params['t_gate_start'] is not None \
+        and params['t_gate_end'] is not None \
+        and params['gate_window'] is None:
+            gatestart = params['t_gate_start']
+            gateend = params['t_gate_end']
+            dgate = gateend-gatestart
+        elif params['gate_window'] is not None:
+            dgate = params['gate_window']:
+        else:
+            raise ValueError("Gating accepts either start and end time \
+            or duration.")
         try:
             wfs = self.waveform_generator.generate(**params)
         except NoWaveformError:
@@ -1215,9 +1225,25 @@ class GatedGaussianNoise(BaseGaussianNoise):
             invp=self._invpsds[det]
             Det = Detector(det)
             #Accounting for the time delay between the waveforms of the different detectors
-            gatestartdelay = gatestart + Det.time_delay_from_earth_center(self.current_params['ra'], self.current_params['dec'], gatestart)
-            gateenddelay = gateend + Det.time_delay_from_earth_center(self.current_params['ra'], self.current_params['dec'], gateend)
-            dgatedelay = gateenddelay - gatestartdelay
+            if gatestart is not None:
+                gatestartdelay = gatestart \
+                                + Det.time_delay_from_earth_center(
+                                    self.current_params['ra'],
+                                    self.current_params['dec'], gatestart)
+                gateenddelay = gateend \
+                                + Det.time_delay_from_earth_center(
+                                    self.current_params['ra'],
+                                    self.current_params['dec'], gateend)
+                dgatedelay = gateenddelay - gatestartdelay
+            else:
+                dgatedelay = dgate
+                meco_f = hybrid_meco_frequency(params['mass1'],
+                            params['mass2'], params['spin1z'], params['spin2z'],
+                            qm1=None, qm2=None)
+                # Find index of frequency <= meco_f
+                f_idx = numpy.sum(h.sample_frequencies.numpy() <= meco_f) - 1
+                gatestartdelay = time_from_frequencyseries(h)[f_idx] + h.epoch
+
             if self._kmin[det] >= kmax:
                 # if the waveform terminates before the filtering low frequency
                 # cutoff, then the loglr is just 0 for this detector
