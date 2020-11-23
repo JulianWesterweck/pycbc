@@ -22,7 +22,7 @@ assuming various noise models.
 
 from .analytic import (TestEggbox, TestNormal, TestRosenbrock, TestVolcano,
                        TestPrior)
-from .gaussian_noise import GaussianNoise
+from .gaussian_noise import GaussianNoise, GaussianNoiseEcho
 from .marginalized_gaussian_noise import MarginalizedPhaseGaussianNoise
 from .marginalized_gaussian_noise import MarginalizedPolarization
 from .brute_marg import BruteParallelGaussianMarginalize
@@ -183,6 +183,7 @@ models = {_cls.name: _cls for _cls in (
     TestVolcano,
     TestPrior,
     GaussianNoise,
+    GaussianNoiseEcho,
     MarginalizedPhaseGaussianNoise,
     MarginalizedPolarization,
     BruteParallelGaussianMarginalize,

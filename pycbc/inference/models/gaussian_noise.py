@@ -21,6 +21,7 @@ import shlex
 from abc import ABCMeta
 from six import add_metaclass
 import numpy
+from scipy import special
 
 from pycbc import filter as pyfilter
 from pycbc.waveform import (NoWaveformError, FailedWaveformError)
@@ -36,6 +37,7 @@ from .base import ModelStats
 from .base_data import BaseDataModel
 from .data_utils import (data_opts_from_config, data_from_cli,
                          fd_data_from_strain_dict, gate_overwhitened_data)
+import time
 
 
 @add_metaclass(ABCMeta)
@@ -113,6 +115,7 @@ class BaseGaussianNoise(BaseDataModel):
     lognorm
     """
     def __init__(self, variable_params, data, low_frequency_cutoff, psds=None,
+#                 psds_long=None,
                  high_frequency_cutoff=None, normalize=False,
                  static_params=None, ignore_failed_waveforms=False,
                  **kwargs):
@@ -172,14 +175,19 @@ class BaseGaussianNoise(BaseDataModel):
         # store the psds and calculate the inner product weight
         self._psds = {}
         self._weight = {}
+#        self._psds_long = {}
+#        self._weight_long = {}
         self._lognorm = {}
         self._det_lognls = {}
         self._whitened_data = {}
+        self._whitened_data_short = {}
 
         # set the normalization state
         self._normalize = False
         self.normalize = normalize
         # store the psds and whiten the data
+#        psds_list = (psds, psds_long)
+#        self.psds = psds_list
         self.psds = psds
 
     @property
@@ -224,7 +232,7 @@ class BaseGaussianNoise(BaseDataModel):
         return self._psds
 
     @psds.setter
-    def psds(self, psds):
+    def psds(self, psds): #psds_list):
         """Sets the psds, and calculates the weight and norm from them.
 
         The data and the low and high frequency cutoffs must be set first.
@@ -236,9 +244,13 @@ class BaseGaussianNoise(BaseDataModel):
             raise ValueError("low frequency cutoff not set")
         if self._f_upper is None:
             raise ValueError("high frequency cutoff not set")
+        
+#        psds, psds_long = psds_list
         # make sure the relevant caches are cleared
         self._psds.clear()
         self._weight.clear()
+#        self._psds_long.clear()
+#        self._weight_long.clear()
         self._lognorm.clear()
         self._det_lognls.clear()
         self._whitened_data.clear()
@@ -250,6 +262,14 @@ class BaseGaussianNoise(BaseDataModel):
             else:
                 # copy for storage
                 p = psds[det].copy()
+#            if psds_long:
+#                pl = psds_long[det].copy()
+#                wl = Array(numpy.zeros(len(pl)))
+#                kmin = int(self._f_lower[det] / pl.delta_f)
+#                kmax = int(self._f_upper[det] / pl.delta_f)
+#                wl[kmin:kmax] = numpy.sqrt(4.*pl.delta_f/pl[kmin:kmax])
+#                self._weight_long[det] = wl
+#                self._psds_long[det] = pl
             self._psds[det] = p
             # we'll store the weight to apply to the inner product
             w = Array(numpy.zeros(len(p)))
@@ -260,6 +280,13 @@ class BaseGaussianNoise(BaseDataModel):
             self._weight[det] = w
             self._whitened_data[det] = d.copy()
             self._whitened_data[det][kmin:kmax] *= w[kmin:kmax]
+            
+            ws = d.copy()
+            ws = ws.to_timeseries()
+            ws = ws[int(len(ws)/4):int(3/4*len(ws))]
+            self._whitened_data_short[det] = ws.to_frequencyseries(delta_f=p.delta_f)
+            self._whitened_data_short[det][kmin:kmax] *= w[kmin:kmax]
+
         # set the lognl and lognorm; we'll get this by just calling lognl
         _ = self.lognl
 
@@ -802,13 +829,14 @@ class GaussianNoise(BaseGaussianNoise):
     def _extra_stats(self):
         """Adds ``loglr``, plus ``cplx_loglr`` and ``optimal_snrsq`` in each
         detector."""
-        return ['loglr'] + \
+        return ['loglr', 'maxl_phase'] + \
                ['{}_cplx_loglr'.format(det) for det in self._data] + \
                ['{}_optimal_snrsq'.format(det) for det in self._data]
 
     def _nowaveform_loglr(self):
         """Convenience function to set loglr values if no waveform generated.
         """
+        setattr(self._current_stats, 'maxl_phase', numpy.nan)
         for det in self._data:
             setattr(self._current_stats, 'loglikelihood', -numpy.inf)
             setattr(self._current_stats, '{}_cplx_loglr'.format(det),
@@ -869,6 +897,177 @@ class GaussianNoise(BaseGaussianNoise):
         # current stats even if loglikelihood is never called
         self._current_stats.loglikelihood = lr + self.lognl
         return float(lr)
+
+    def det_cplx_loglr(self, det):
+        """Returns the complex log likelihood ratio in the given detector.
+
+        Parameters
+        ----------
+        det : str
+            The name of the detector.
+
+        Returns
+        -------
+        complex float :
+            The complex log likelihood ratio.
+        """
+        # try to get it from current stats
+        try:
+            return getattr(self._current_stats, '{}_cplx_loglr'.format(det))
+        except AttributeError:
+            # hasn't been calculated yet; call loglr to do so
+            self._loglr()
+            # now try returning again
+            return getattr(self._current_stats, '{}_cplx_loglr'.format(det))
+
+    def det_optimal_snrsq(self, det):
+        """Returns the opitmal SNR squared in the given detector.
+
+        Parameters
+        ----------
+        det : str
+            The name of the detector.
+
+        Returns
+        -------
+        float :
+            The opimtal SNR squared.
+        """
+        # try to get it from current stats
+        try:
+            return getattr(self._current_stats, '{}_optimal_snrsq'.format(det))
+        except AttributeError:
+            # hasn't been calculated yet; call loglr to do so
+            self._loglr()
+            # now try returning again
+            return getattr(self._current_stats, '{}_optimal_snrsq'.format(det))
+
+
+class GaussianNoiseEcho(BaseGaussianNoise):
+    r"""Model that assumes data is stationary Gaussian noise."""
+    name = 'gaussian_noise_echo'
+
+    def __init__(self, variable_params, data, low_frequency_cutoff, psds=None,
+#                 psds_long=None,
+                 high_frequency_cutoff=None, normalize=False,
+                 static_params=None, 
+                 override_delta_f=None,override_delta_t=None,
+                 override_start_time=None,
+                 **kwargs):
+        # set up the boiler-plate attributes
+        super(GaussianNoiseEcho, self).__init__(
+            variable_params, data, low_frequency_cutoff, psds=psds,
+#            psds_long = psds_long,
+            high_frequency_cutoff=high_frequency_cutoff, normalize=normalize,
+            static_params=static_params, **kwargs)
+        # create the waveform generator
+        self.waveform_generator = create_waveform_generator(
+            self.variable_params, self.data,
+            waveform_transforms=self.waveform_transforms,
+            recalibration=self.recalibration,
+            override_delta_f=override_delta_f, override_delta_t=override_delta_t,
+            override_start_time=override_start_time,
+            gates=self.gates, **self.static_params)
+
+    @property
+    def _extra_stats(self):
+        """Adds ``loglr``, plus ``cplx_loglr`` and ``optimal_snrsq`` in each
+        detector."""
+        return ['loglr'] + \
+               ['{}_cplx_loglr'.format(det) for det in self._data] + \
+               ['{}_optimal_snrsq'.format(det) for det in self._data]
+
+    def _nowaveform_loglr(self):
+        """Convenience function to set loglr values if no waveform generated.
+        """
+        for det in self._data:
+            setattr(self._current_stats, 'loglikelihood', -numpy.inf)
+            setattr(self._current_stats, '{}_cplx_loglr'.format(det),
+                    -numpy.inf)
+            # snr can't be < 0 by definition, so return 0
+            setattr(self._current_stats, '{}_optimal_snrsq'.format(det), 0.)
+        return -numpy.inf
+
+    def _loglr(self):
+        r"""Computes the log likelihood ratio,
+
+        .. math::
+
+            \log \mathcal{L}(\Theta) = \sum_i
+                \left<h_i(\Theta)|d_i\right> -
+                \frac{1}{2}\left<h_i(\Theta)|h_i(\Theta)\right>,
+
+        at the current parameter values :math:`\Theta`.
+
+        Returns
+        -------
+        float
+            The value of the log likelihood ratio.
+        """
+        params = self.current_params
+        params['tc'] = params['tc'] - params['t_final']/2.
+        params['t_final'] = 2 * params['t_final']
+        temp_freq = params['f_220']
+        params['f_220'] = 50.
+        params['amp220'] = params['amp220'] * numpy.exp(512./params['tau_220'])
+        try:
+            wfs = self.waveform_generator.generate(**params)
+        except NoWaveformError:
+            return self._nowaveform_loglr()
+        except FailedWaveformError as e:
+            if self.ignore_failed_waveforms:
+                return self._nowaveform_loglr()
+            else:
+                raise e
+##        lr = 0.
+        hh = 0.
+        hd = 0j
+        for det, h in wfs.items():
+            shift_idx = int((temp_freq - params['f_220']) / h.delta_f)
+            h_data = numpy.zeros(int(256./h.delta_f+1), dtype=h.dtype)
+            h_data[shift_idx:shift_idx+len(h)] = h.data
+            h = FrequencySeries(h_data, delta_f=h.delta_f, epoch=h.epoch)
+            # the kmax of the waveforms may be different than internal kmax
+##            kmax = min(len(h), int(self._f_upper[det] / self._psds_long[det].delta_f))
+##            kmin = int(self._f_lower[det] / self._psds_long[det].delta_f)
+            kmax = min(len(h), self._kmax[det])
+            if self._kmin[det] >= kmax:
+                # if the waveform terminates before the filtering low frequency
+                # cutoff, then the loglr is just 0 for this detector
+                cplx_hd = 0j
+                hh = 0.
+            else:
+                slc = slice(self._kmin[det], kmax)
+                # whiten the waveform
+##                h[kmin:kmax] *= self._weight_long[det][slc]
+                h[slc] *= self._weight[det][slc]
+                # remove beginning and end padding in time domain
+                h = h.to_timeseries()
+                h = h[int(len(h)/4):int(3*len(h)/4)]
+                test_h = h
+                h = h.to_frequencyseries(delta_f=self._psds[det].delta_f)
+##                h = h.to_frequencyseries(delta_f=1./h.duration)
+                # update kmax for new waveform frequencyseries
+##                kmax = min(len(h), self._kmax[det])
+##                slc = slice(self._kmin[det], kmax)
+                # the inner products
+                cplx_hd_i = self._whitened_data_short[det][slc].inner(h[slc])  # <h, d>
+                hh_i = h[slc].inner(h[slc]).real  # < h, h>
+##            cplx_loglr = cplx_hd - 0.5*hh
+            # store
+            setattr(self._current_stats, '{}_optimal_snrsq'.format(det), hh_i)
+##            setattr(self._current_stats, '{}_cplx_loglr'.format(det),
+##                    cplx_loglr)
+##            lr += cplx_loglr.real
+            hh += hh_i
+            hd += cplx_hd_i
+        # also store the loglikelihood, to ensure it is populated in the
+        # current stats even if loglikelihood is never called
+##        self._current_stats.loglikelihood = lr + self.lognl
+        hd = abs(hd)
+        self._current_stats.maxl_phase = numpy.angle(hd)
+##        return float(lr), h, wfs
+        return numpy.log(special.i0e(hd)) + hd - 0.5*hh, test_h
 
     def det_cplx_loglr(self, det):
         """Returns the complex log likelihood ratio in the given detector.
@@ -1037,6 +1236,8 @@ def create_waveform_generator(
                 variable_params, data, waveform_transforms=None,
                 recalibration=None, gates=None,
                 generator_class=generator.FDomainDetFrameGenerator,
+                override_delta_t=None, override_delta_f=None,
+                override_start_time=None,
                 **static_params):
     """Creates a waveform generator for use with a model.
 
@@ -1082,17 +1283,22 @@ def create_waveform_generator(
     generator_function = generator.select_waveform_generator(approximant)
     # get data parameters; we'll just use one of the data to get the
     # values, then check that all the others are the same
-    delta_f = None
-    for d in data.values():
-        if delta_f is None:
-            delta_f = d.delta_f
-            delta_t = d.delta_t
-            start_time = d.start_time
-        else:
-            if not all([d.delta_f == delta_f, d.delta_t == delta_t,
-                        d.start_time == start_time]):
-                raise ValueError("data must all have the same delta_t, "
-                                 "delta_f, and start_time")
+    if override_delta_f and override_delta_t and override_start_time:
+        delta_f = override_delta_f
+        delta_t = override_delta_t
+        start_time = override_start_time
+    else:
+        delta_f = None
+        for d in data.values():
+            if delta_f is None:
+                delta_f = d.delta_f
+                delta_t = d.delta_t
+                start_time = d.start_time
+            else:
+                if not all([d.delta_f == delta_f, d.delta_t == delta_t,
+                            d.start_time == start_time]):
+                    raise ValueError("data must all have the same delta_t, "
+                                     "delta_f, and start_time")
     waveform_generator = generator_class(
         generator_function, epoch=start_time,
         variable_args=variable_params, detectors=list(data.keys()),
