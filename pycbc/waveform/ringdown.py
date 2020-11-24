@@ -306,7 +306,7 @@ def td_output_vector(freqs, damping_times, taper=False,
         delta_t = lm_deltat(freqs, damping_times)
     if not t_final:
         t_final = lm_tfinal(damping_times)
-    kmax = int(t_final / delta_t) + 1
+    kmax = int(t_final / delta_t)
 
     # Different modes will have different tapering window-size
     # Find maximum window size to create long enough output vector

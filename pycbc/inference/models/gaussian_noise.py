@@ -115,7 +115,6 @@ class BaseGaussianNoise(BaseDataModel):
     lognorm
     """
     def __init__(self, variable_params, data, low_frequency_cutoff, psds=None,
-#                 psds_long=None,
                  high_frequency_cutoff=None, normalize=False,
                  static_params=None, ignore_failed_waveforms=False,
                  **kwargs):
@@ -175,8 +174,6 @@ class BaseGaussianNoise(BaseDataModel):
         # store the psds and calculate the inner product weight
         self._psds = {}
         self._weight = {}
-#        self._psds_long = {}
-#        self._weight_long = {}
         self._lognorm = {}
         self._det_lognls = {}
         self._whitened_data = {}
@@ -186,8 +183,6 @@ class BaseGaussianNoise(BaseDataModel):
         self._normalize = False
         self.normalize = normalize
         # store the psds and whiten the data
-#        psds_list = (psds, psds_long)
-#        self.psds = psds_list
         self.psds = psds
 
     @property
@@ -232,7 +227,7 @@ class BaseGaussianNoise(BaseDataModel):
         return self._psds
 
     @psds.setter
-    def psds(self, psds): #psds_list):
+    def psds(self, psds):
         """Sets the psds, and calculates the weight and norm from them.
 
         The data and the low and high frequency cutoffs must be set first.
@@ -244,13 +239,10 @@ class BaseGaussianNoise(BaseDataModel):
             raise ValueError("low frequency cutoff not set")
         if self._f_upper is None:
             raise ValueError("high frequency cutoff not set")
-        
-#        psds, psds_long = psds_list
+
         # make sure the relevant caches are cleared
         self._psds.clear()
         self._weight.clear()
-#        self._psds_long.clear()
-#        self._weight_long.clear()
         self._lognorm.clear()
         self._det_lognls.clear()
         self._whitened_data.clear()
@@ -262,14 +254,6 @@ class BaseGaussianNoise(BaseDataModel):
             else:
                 # copy for storage
                 p = psds[det].copy()
-#            if psds_long:
-#                pl = psds_long[det].copy()
-#                wl = Array(numpy.zeros(len(pl)))
-#                kmin = int(self._f_lower[det] / pl.delta_f)
-#                kmax = int(self._f_upper[det] / pl.delta_f)
-#                wl[kmin:kmax] = numpy.sqrt(4.*pl.delta_f/pl[kmin:kmax])
-#                self._weight_long[det] = wl
-#                self._psds_long[det] = pl
             self._psds[det] = p
             # we'll store the weight to apply to the inner product
             w = Array(numpy.zeros(len(p)))
@@ -280,12 +264,12 @@ class BaseGaussianNoise(BaseDataModel):
             self._weight[det] = w
             self._whitened_data[det] = d.copy()
             self._whitened_data[det][kmin:kmax] *= w[kmin:kmax]
-            
+
             ws = d.copy()
+            ws[kmin:kmax] *= w[kmin:kmax]
             ws = ws.to_timeseries()
             ws = ws[int(len(ws)/4):int(3/4*len(ws))]
-            self._whitened_data_short[det] = ws.to_frequencyseries(delta_f=p.delta_f)
-            self._whitened_data_short[det][kmin:kmax] *= w[kmin:kmax]
+            self._whitened_data_short[det] = ws.to_frequencyseries()
 
         # set the lognl and lognorm; we'll get this by just calling lognl
         _ = self.lognl
@@ -948,7 +932,6 @@ class GaussianNoiseEcho(BaseGaussianNoise):
     name = 'gaussian_noise_echo'
 
     def __init__(self, variable_params, data, low_frequency_cutoff, psds=None,
-#                 psds_long=None,
                  high_frequency_cutoff=None, normalize=False,
                  static_params=None, 
                  override_delta_f=None,override_delta_t=None,
@@ -957,7 +940,6 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         # set up the boiler-plate attributes
         super(GaussianNoiseEcho, self).__init__(
             variable_params, data, low_frequency_cutoff, psds=psds,
-#            psds_long = psds_long,
             high_frequency_cutoff=high_frequency_cutoff, normalize=normalize,
             static_params=static_params, **kwargs)
         # create the waveform generator
@@ -1019,7 +1001,6 @@ class GaussianNoiseEcho(BaseGaussianNoise):
                 return self._nowaveform_loglr()
             else:
                 raise e
-##        lr = 0.
         hh = 0.
         hd = 0j
         for det, h in wfs.items():
@@ -1028,8 +1009,6 @@ class GaussianNoiseEcho(BaseGaussianNoise):
             h_data[shift_idx:shift_idx+len(h)] = h.data
             h = FrequencySeries(h_data, delta_f=h.delta_f, epoch=h.epoch)
             # the kmax of the waveforms may be different than internal kmax
-##            kmax = min(len(h), int(self._f_upper[det] / self._psds_long[det].delta_f))
-##            kmin = int(self._f_lower[det] / self._psds_long[det].delta_f)
             kmax = min(len(h), self._kmax[det])
             if self._kmin[det] >= kmax:
                 # if the waveform terminates before the filtering low frequency
@@ -1039,35 +1018,31 @@ class GaussianNoiseEcho(BaseGaussianNoise):
             else:
                 slc = slice(self._kmin[det], kmax)
                 # whiten the waveform
-##                h[kmin:kmax] *= self._weight_long[det][slc]
                 h[slc] *= self._weight[det][slc]
                 # remove beginning and end padding in time domain
                 h = h.to_timeseries()
                 h = h[int(len(h)/4):int(3*len(h)/4)]
-                test_h = h
-                h = h.to_frequencyseries(delta_f=self._psds[det].delta_f)
-##                h = h.to_frequencyseries(delta_f=1./h.duration)
+                n_wf = len(h)
+                h = h.to_frequencyseries()
                 # update kmax for new waveform frequencyseries
-##                kmax = min(len(h), self._kmax[det])
-##                slc = slice(self._kmin[det], kmax)
+                kmin, kmax = pyfilter.get_cutoff_indices(self._f_lower[det],
+                                                         self._f_upper[det],
+                                                         h.delta_f, n_wf)
+                kmax = min(len(h), kmax)
+                slc = slice(kmin, kmax)
+
                 # the inner products
                 cplx_hd_i = self._whitened_data_short[det][slc].inner(h[slc])  # <h, d>
                 hh_i = h[slc].inner(h[slc]).real  # < h, h>
-##            cplx_loglr = cplx_hd - 0.5*hh
             # store
             setattr(self._current_stats, '{}_optimal_snrsq'.format(det), hh_i)
-##            setattr(self._current_stats, '{}_cplx_loglr'.format(det),
-##                    cplx_loglr)
-##            lr += cplx_loglr.real
             hh += hh_i
             hd += cplx_hd_i
         # also store the loglikelihood, to ensure it is populated in the
         # current stats even if loglikelihood is never called
-##        self._current_stats.loglikelihood = lr + self.lognl
         hd = abs(hd)
         self._current_stats.maxl_phase = numpy.angle(hd)
-##        return float(lr), h, wfs
-        return numpy.log(special.i0e(hd)) + hd - 0.5*hh, test_h
+        return numpy.log(special.i0e(hd)) + hd - 0.5*hh
 
     def det_cplx_loglr(self, det):
         """Returns the complex log likelihood ratio in the given detector.
