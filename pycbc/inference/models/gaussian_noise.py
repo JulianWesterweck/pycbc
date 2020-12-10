@@ -117,6 +117,8 @@ class BaseGaussianNoise(BaseDataModel):
     def __init__(self, variable_params, data, low_frequency_cutoff, psds=None,
                  high_frequency_cutoff=None, normalize=False,
                  static_params=None, ignore_failed_waveforms=False,
+                 override_delta_f=None, override_delta_t=None,
+                 override_start_time=None,
                  **kwargs):
         # set up the boiler-plate attributes
         super(BaseGaussianNoise, self).__init__(variable_params, data,
@@ -934,7 +936,7 @@ class GaussianNoiseEcho(BaseGaussianNoise):
     def __init__(self, variable_params, data, low_frequency_cutoff, psds=None,
                  high_frequency_cutoff=None, normalize=False,
                  static_params=None, 
-                 override_delta_f=None,override_delta_t=None,
+                 override_delta_f=None, override_delta_t=None,
                  override_start_time=None,
                  **kwargs):
         # set up the boiler-plate attributes
