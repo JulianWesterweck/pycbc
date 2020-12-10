@@ -578,7 +578,10 @@ class BaseGaussianNoise(BaseDataModel):
         args.update({'data': stilde_dict, 'psds': psds})
         # any extra args
         args.update(cls.extra_args_from_config(cp, "model",
-                                               skip_args=ignore_args))
+                                               skip_args=ignore_args,
+                                               dtypes={'override_delta_f':float,
+                                                       'override_delta_t':float,
+                                                       'override_start_time':float}))
         # get ifo-specific instances of calibration model
         if cp.has_section('calibration'):
             logging.info("Initializing calibration model")
