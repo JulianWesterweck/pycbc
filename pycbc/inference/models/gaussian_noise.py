@@ -956,6 +956,8 @@ class GaussianNoiseEcho(BaseGaussianNoise):
             override_start_time=override_start_time,
             gates=self.gates, **self.static_params)
 
+        self.override_delta_f = override_delta_f
+
     @property
     def _extra_stats(self):
         """Adds ``loglr``, plus ``cplx_loglr`` and ``optimal_snrsq`` in each
@@ -995,8 +997,10 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         params['tc'] = params['tc'] - params['t_final']/2.
         params['t_final'] = 2 * params['t_final']
         temp_freq = params['f_220']
-        params['f_220'] = 50.
+        params['f_220'] = 10.
         params['amp220'] = params['amp220'] * numpy.exp(512./params['tau_220'])
+        # Set width of frequency window around peak in frequency steps
+        freq_window_idx = int(20. / self.override_delta_f)
         try:
             wfs = self.waveform_generator.generate(**params)
         except NoWaveformError:
@@ -1011,7 +1015,7 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         for det, h in wfs.items():
             shift_idx = int((temp_freq - params['f_220']) / h.delta_f)
             h_data = numpy.zeros(int(256./h.delta_f+1), dtype=h.dtype)
-            h_data[shift_idx:shift_idx+len(h)] = h.data
+            h_data[shift_idx:shift_idx+freq_window_idx] = h.data[:freq_window_idx]
             h = FrequencySeries(h_data, delta_f=h.delta_f, epoch=h.epoch)
             # the kmax of the waveforms may be different than internal kmax
             kmax = min(len(h), self._kmax[det])
