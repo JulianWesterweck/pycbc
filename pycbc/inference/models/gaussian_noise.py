@@ -37,7 +37,6 @@ from .base import ModelStats
 from .base_data import BaseDataModel
 from .data_utils import (data_opts_from_config, data_from_cli,
                          fd_data_from_strain_dict, gate_overwhitened_data)
-import time
 
 
 @add_metaclass(ABCMeta)
@@ -269,7 +268,6 @@ class BaseGaussianNoise(BaseDataModel):
 
             ws = d.copy()
             ws[kmin:kmax] *= w[kmin:kmax]
-#            ws = ws.to_timeseries()
             ws = utils.fd_to_td(ws, left_window=(self._f_lower[det]-5.,self._f_lower[det]))
             ws = ws[int(len(ws)/4):int(3/4*len(ws))]
             self._whitened_data_short[det] = ws.to_frequencyseries()
@@ -1000,8 +998,6 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         temp_freq = params['f_220']
         params['f_220'] = 8.
         params['amp220'] = params['amp220'] * numpy.exp(512./params['tau_220'])
-        # Set width of frequency window around peak in frequency steps
-#        freq_window_idx = int(20. / self.override_delta_f)
         try:
             wfs = self.waveform_generator.generate(**params)
         except NoWaveformError:
@@ -1014,7 +1010,7 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         hh = 0.
         hd = 0j
         for det, h in wfs.items():
-            shift_idx = int((temp_freq - params['f_220']) / h.delta_f)
+            shift_idx = int(numpy.around((temp_freq - params['f_220']) / h.delta_f))
             h_data = numpy.zeros(int(256./h.delta_f+1), dtype=h.dtype)
             h_data[shift_idx:shift_idx+len(h)] = h.data[:len(h)]
             h = FrequencySeries(h_data, delta_f=h.delta_f, epoch=h.epoch)
@@ -1030,7 +1026,6 @@ class GaussianNoiseEcho(BaseGaussianNoise):
                 # whiten the waveform
                 h[slc] *= self._weight[det][slc]
                 # remove beginning and end padding in time domain
-#                h = h.to_timeseries()
                 h = utils.fd_to_td(h, left_window=(self._f_lower[det]-5.,self._f_lower[det]))
                 h = h[int(len(h)/4):int(3*len(h)/4)]
                 n_wf = len(h)
