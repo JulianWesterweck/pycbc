@@ -961,7 +961,7 @@ class GaussianNoiseEcho(BaseGaussianNoise):
     def _extra_stats(self):
         """Adds ``loglr``, plus ``cplx_loglr`` and ``optimal_snrsq`` in each
         detector."""
-        return ['loglr'] + \
+        return ['loglr', 'maxl_phase'] + \
                ['{}_cplx_loglr'.format(det) for det in self._data] + \
                ['{}_optimal_snrsq'.format(det) for det in self._data]
 
