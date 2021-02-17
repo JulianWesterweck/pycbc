@@ -1046,8 +1046,8 @@ class GaussianNoiseEcho(BaseGaussianNoise):
             hd += cplx_hd_i
         # also store the loglikelihood, to ensure it is populated in the
         # current stats even if loglikelihood is never called
-        hd = abs(hd)
         self._current_stats.maxl_phase = numpy.angle(hd)
+        hd = abs(hd)
         return numpy.log(special.i0e(hd)) + hd - 0.5*hh
 
     def det_cplx_loglr(self, det):
