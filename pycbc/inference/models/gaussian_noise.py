@@ -40,6 +40,7 @@ from pycbc.detector import Detector
 from pycbc.pnutils import hybrid_meco_frequency
 from pycbc.waveform.utils import time_from_frequencyseries
 
+import copy
 
 @add_metaclass(ABCMeta)
 class BaseGaussianNoise(BaseDataModel):
@@ -185,6 +186,16 @@ class BaseGaussianNoise(BaseDataModel):
         self.normalize = normalize
         # store the psds and whiten the data
         self.psds = psds
+
+        # Store current waveform from loglr for testing
+        self.loglr_wf = {}
+        for det in self.data.keys():
+            self.loglr_wf[det] = {'wf_td':[],
+                                  'data_td':[],
+                                  'wf_td_gated':[],
+                                  'data_td_gated':[],
+                                  'wf_fd_gated_white':[],
+                                  'data_fd_gated_white':[]}
 
     @property
     def high_frequency_cutoff(self):
@@ -1042,7 +1053,8 @@ class GatedGaussianNoise(BaseGaussianNoise):
                 #data details
                 d = self._data[det]
                 D = d.to_timeseries()
-
+                self.loglr_wf[det]['wf_td'] = copy.deepcopy(H)
+                self.loglr_wf[det]['data_td'] = copy.deepcopy(D)
                 ##Applying the gate method "paint"
                 gatedH = H.gate(gatestartdelay + dgatedelay/2,
                                 window=dgatedelay/2, copy=False,
@@ -1050,13 +1062,16 @@ class GatedGaussianNoise(BaseGaussianNoise):
                 gatedD = D.gate(gatestartdelay + dgatedelay/2,
                                 window=dgatedelay/2, copy=False,
                                 invpsd=invp, method='paint')
-
+                self.loglr_wf[det]['wf_td_gated'] = copy.deepcopy(gatedH)
+                self.loglr_wf[det]['data_td_gated'] = copy.deepcopy(gatedD)
                 ##conversion to the frequency series
                 gatedHFreq = gatedH.to_frequencyseries()
                 gatedDFreq = gatedD.to_frequencyseries()
                 #Normalization
                 gatedDFreq *= self._weight[det]
                 gatedHFreq *= self._weight[det]
+                self.loglr_wf[det]['wf_fd_gated_white'] = copy.deepcopy(gatedHFreq)
+                self.loglr_wf[det]['data_fd_gated_white'] = copy.deepcopy(gatedDFreq)
                 #inner product
                 cplx_hd = gatedHFreq[slc].inner(gatedDFreq[slc])  # <h,d>
                 hh = gatedHFreq[slc].inner(gatedHFreq[slc]).real  # <h,h>
