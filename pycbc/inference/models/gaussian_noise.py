@@ -37,7 +37,7 @@ from .base import ModelStats
 from .base_data import BaseDataModel
 from .data_utils import (data_opts_from_config, data_from_cli,
                          fd_data_from_strain_dict, gate_overwhitened_data)
-
+import copy
 
 @add_metaclass(ABCMeta)
 class BaseGaussianNoise(BaseDataModel):
@@ -185,6 +185,11 @@ class BaseGaussianNoise(BaseDataModel):
         self.normalize = normalize
         # store the psds and whiten the data
         self.psds = psds
+
+        # Store current waveform from loglr for testing
+        self.loglr_wf = {}
+        for det in self.data.keys():
+            self.loglr_wf[det] = {'fd':[], 'td_white':[], 'fd_white':[]}
 
     @property
     def high_frequency_cutoff(self):
@@ -1023,13 +1028,16 @@ class GaussianNoiseEcho(BaseGaussianNoise):
                 hh = 0.
             else:
                 slc = slice(self._kmin[det], kmax)
+                self.loglr_wf[det]['fd'] = copy.deepcopy(h)
                 # whiten the waveform
                 h[slc] *= self._weight[det][slc]
                 # remove beginning and end padding in time domain
                 h = utils.fd_to_td(h, left_window=(self._f_lower[det]-5.,self._f_lower[det]))
                 h = h[int(len(h)/4):int(3*len(h)/4)]
+                self.loglr_wf[det]['td_white'] = copy.deepcopy(h)
                 n_wf = len(h)
                 h = h.to_frequencyseries()
+                self.loglr_wf[det]['fd_white'] = copy.deepcopy(h)
                 # update kmax for new waveform frequencyseries
                 kmin, kmax = pyfilter.get_cutoff_indices(self._f_lower[det],
                                                          self._f_upper[det],
