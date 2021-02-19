@@ -37,6 +37,8 @@ from .base_data import BaseDataModel
 from .data_utils import (data_opts_from_config, data_from_cli,
                          fd_data_from_strain_dict, gate_overwhitened_data)
 from pycbc.detector import Detector
+from pycbc.pnutils import hybrid_meco_frequency
+from pycbc.waveform.utils import time_from_frequencyseries
 
 
 @add_metaclass(ABCMeta)
@@ -1059,25 +1061,66 @@ class GatedGaussianNoise(BaseGaussianNoise):
             Dictionary of detector names -> (gate start, gate width)
         """
         params = self.current_params
-        # gate input for ringdown analysis which consideres a start time
-        # and an end time
-        gatestart = params['t_gate_start']
-        gateend = params['t_gate_end']
-        dgate = gateend-gatestart
-        # we'll need the sky location for determining time shifts
-        ra = self.current_params['ra']
-        dec = self.current_params['dec']
+        gatestart = None
         gatetimes = {}
-        for det, invpsd in self._invpsds.items():
-            thisdet = Detector(det)
-            # account for the time delay between the waveforms of the
-            # different detectors
-            gatestartdelay = gatestart + thisdet.time_delay_from_earth_center(
-                ra, dec, gatestart)
-            gateenddelay = gateend + thisdet.time_delay_from_earth_center(
-                ra, dec, gateend)
-            dgatedelay = gateenddelay - gatestartdelay
-            gatetimes[det] = (gatestartdelay, dgatedelay)
+        # Start looking for f_meco slightly above low freq cutoff:
+        f_pad = 1
+        if 't_gate_start' in params.keys() \
+        and 't_gate_end' in params.keys() \
+        and not 'gate_window' in params.keys():
+            gatestart = params['t_gate_start']
+            gateend = params['t_gate_end']
+            dgate = gateend-gatestart
+        elif 'gate_window' in params.keys() \
+        and not ('t_gate_start' in params.keys() \
+        or 't_gate_end' in params.keys()):
+            dgate = params['gate_window']
+        if gatestart:
+            # gate input for ringdown analysis which consideres a start time
+            # and an end time
+            gatestart = params['t_gate_start']
+            gateend = params['t_gate_end']
+            dgate = gateend-gatestart
+            # we'll need the sky location for determining time shifts
+            ra = self.current_params['ra']
+            dec = self.current_params['dec']
+            for det, invpsd in self._invpsds.items():
+                thisdet = Detector(det)
+                # account for the time delay between the waveforms of the
+                # different detectors
+                gatestartdelay = gatestart + thisdet.time_delay_from_earth_center(
+                    ra, dec, gatestart)
+                gateenddelay = gateend + thisdet.time_delay_from_earth_center(
+                    ra, dec, gateend)
+                dgatedelay = gateenddelay - gatestartdelay
+                gatetimes[det] = (gatestartdelay, dgatedelay)
+
+        else:
+            dgatedelay = dgate
+            try:
+                wfs = self.waveform_generator.generate(**params)
+            except NoWaveformError as e:
+                raise e
+            except FailedWaveformError as e:
+                raise e
+            for det, h in wfs.items():
+                spin1 = numpy.sqrt(params['spin1x']**2 + params['spin1y']**2 \
+                                   + params['spin1z']**2)
+                spin2 = numpy.sqrt(params['spin2x']**2 + params['spin2y']**2 \
+                                   + params['spin2z']**2)
+                meco_f = hybrid_meco_frequency(params['mass1'], params['mass2'],
+                                   spin1, spin2, qm1=None, qm2=None)
+                # Find index of highest frequency <= meco_f, starting above
+                # low freq cutoff
+                f_low = int((self._f_lower[det]+f_pad)/h.delta_f)
+                sample_freqs = h.sample_frequencies[f_low:].numpy()
+                f_idx = numpy.where(sample_freqs <= meco_f)[0][-1]
+                # 
+                t_from_freq = time_from_frequencyseries(
+                                    h[f_low:], sample_frequencies=sample_freqs)
+                gatestartdelay = t_from_freq[f_idx] + float(t_from_freq.epoch)
+                
+                gatetimes[det] = (gatestartdelay, dgatedelay)
         return gatetimes
 
     def _lognl(self):
