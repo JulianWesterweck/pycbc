@@ -1052,8 +1052,14 @@ class GatedGaussianNoise(BaseGaussianNoise):
         """
         return self.loglikelihood - self.lognl
 
-    def get_gate_times(self, det=None, h=None):
+    def get_gate_times(self, detwf=None):
         """Gets the time to apply a gate based on the current sky position.
+
+        Parameters
+        ----------
+        detwf : Tuple, optional
+            The detector (string) and waveform (pycbc frequencyseries)
+            to use in the MECO frequency calculation.
 
         Returns
         -------
@@ -1063,8 +1069,6 @@ class GatedGaussianNoise(BaseGaussianNoise):
         params = self.current_params
         gatestart = None
         gatetimes = {}
-        # Start looking for f_meco slightly above low freq cutoff:
-        f_pad = params['f_pad']
         if 't_gate_start' in params.keys() \
         and 't_gate_end' in params.keys() \
         and not 'gate_window' in params.keys():
@@ -1096,9 +1100,14 @@ class GatedGaussianNoise(BaseGaussianNoise):
                 gatetimes[det] = (gatestartdelay, dgatedelay)
 
         else:
-            if not (det and h):
+            if not (detwf):
                 raise ValueError("Missing waveform to calculate hMECO frequency")
             else:
+                det, h = detwf
+                # Start looking for f_meco slightly above low freq cutoff:
+                f_pad = 1.
+                if 'f_pad' in params.keys():
+                    f_pad = params['f_pad']
                 dgatedelay = dgate
                 spin1 = numpy.sqrt(params['spin1x']**2 + params['spin1y']**2 \
                                    + params['spin1z']**2)
@@ -1198,7 +1207,7 @@ class GatedGaussianNoise(BaseGaussianNoise):
         self.current_gated_data.clear()
         for det, h in wfs.items():
             # get the times of the gates
-            gate_times = self.get_gate_times(det=det, h=h)
+            gate_times = self.get_gate_times(detwf=(det,h))
             invpsd = self._invpsds[det]
             norm = self.det_lognorm(det)
             gatestartdelay, dgatedelay = gate_times[det]
