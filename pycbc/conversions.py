@@ -1376,6 +1376,8 @@ def echo_amp_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
         Luminosity distance in Mpc.
     e_init : float
         Initial energy available to produce echoes, in solar masses.
+        This is the total energy radiated in the IMR signal,
+        i.e. (m_1 + m_2) - m_final
     alpha : float, optional
         Scaling factor for echo amplitude, from 0 to 1.
 
@@ -1392,7 +1394,7 @@ def echo_amp_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
     echo_freq_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon))**2.\
      * echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon)) \
     ) \
-    * (final_mass * lal.lal.MSUN_SI * final_spin**2. / \
+    * (e_init * lal.lal.MSUN_SI * final_spin**2. / \
     (4. + 4. * numpy.sqrt(1.-final_spin**2.) - 2. * final_spin**2.) \
     + e_init * lal.lal.MSUN_SI) \
     )
