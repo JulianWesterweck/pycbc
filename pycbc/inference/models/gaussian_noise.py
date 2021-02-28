@@ -1224,10 +1224,11 @@ class GatedGaussianNoise(BaseGaussianNoise):
             self.current_gated_data[det] = gated_dt
             # convert to the frequency series
             gated_d = gated_dt.to_frequencyseries()
-            # whiten
-            gated_d *= self._weight[det]
+            # overwhiten
+            gated_d *= invpsd
+            d = self.data[det]
             # inner product
-            dd = gated_d[slc].inner(gated_d[slc]).real  # <d, d>
+            dd = 4 * invpsd.delta_f * d[slc].inner(gated_d[slc]).real  # <d, d>
             # store the lognls
             self._det_lognls[det] = norm - 0.5*dd
             lognl += norm - 0.5*dd
@@ -1249,11 +1250,11 @@ class GatedGaussianNoise(BaseGaussianNoise):
                 self.current_gated_wfs[det] = gated_ht
                 # convert to the frequency series
                 gated_h = gated_ht.to_frequencyseries()
-                # whiten
-                gated_h *= self._weight[det]
+                # overwhiten
+                gated_h *= invpsd
                 # inner product
-                hd = gated_h[slc].inner(gated_d[slc]).real  # <h, d>
-                hh = gated_h[slc].inner(gated_h[slc]).real  # <h, h>
+                hd = 4 * invpsd.delta_f * h[slc].inner(gated_d[slc]).real  # <h, d>
+                hh = 4 * invpsd.delta_f * h[slc].inner(gated_h[slc]).real  # <h, h>
             logl += norm + hd - 0.5*hh - 0.5*dd
             # store the optimal snrsq
             setattr(self._current_stats, '{}_optimal_snrsq'.format(det), hh)
