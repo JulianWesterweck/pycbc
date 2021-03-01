@@ -1067,7 +1067,7 @@ class GatedGaussianNoise(BaseGaussianNoise):
             Dictionary of detector names -> (gate start, gate width)
         """
         params = self.current_params
-        gatestart = None
+        gatestart, hmeco_gatestart = None, None
         gatetimes = {}
         if 't_gate_start' in params.keys() \
         and 't_gate_end' in params.keys() \
@@ -1084,6 +1084,9 @@ class GatedGaussianNoise(BaseGaussianNoise):
                               2. only gate duration (starts at hMECO time), or \
                               3. fixed start time and gate duration (starts at minimum \
                               of hMECO and fixed start time).")
+        if 'hmeco_t_gate_start' in params.keys():
+            hmeco_gatestart = params['hmeco_t_gate_start']
+
         if gatestart:
             # gate input for ringdown analysis which consideres a start time
             # and an end time
@@ -1109,6 +1112,7 @@ class GatedGaussianNoise(BaseGaussianNoise):
                 raise ValueError("Missing waveform to calculate hMECO frequency")
             else:
                 det, h = detwf
+                thisdet = Detector(det)
                 # Start looking for f_meco slightly above low freq cutoff:
                 f_pad = 1.
                 if 'f_pad' in params.keys():
@@ -1130,9 +1134,10 @@ class GatedGaussianNoise(BaseGaussianNoise):
                                     h[f_low:], sample_frequencies=sample_freqs)
                 gatestartdelay = t_from_freq[f_idx] + float(t_from_freq.epoch)
                 # Use minimum of h-meco or input gate-start time
-                if 'meco_t_gate_start' in params.keys():
-                    gatestartdelay = min(gatestartdelay, 
-                                         params['meco_t_gate_start'])
+                if hmeco_gatestart:
+                    hmeco_gatestartdelay = hmeco_gatestart + thisdet.time_delay_from_earth_center(
+                        ra, dec, hmeco_gatestart)
+                    gatestartdelay = min(gatestartdelay, hmeco_gatestartdelay)
                 gatetimes[det] = (gatestartdelay, dgatedelay)
         return gatetimes
 
