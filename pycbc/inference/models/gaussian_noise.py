@@ -1079,6 +1079,11 @@ class GatedGaussianNoise(BaseGaussianNoise):
         and not ('t_gate_start' in params.keys() \
         or 't_gate_end' in params.keys()):
             dgate = params['gate_window']
+        else:
+            raise ValueError("Choose either 1. fixed start and end times for gate, \
+                              2. only gate duration (starts at hMECO time), or \
+                              3. fixed start time and gate duration (starts at minimum \
+                              of hMECO and fixed start time).")
         if gatestart:
             # gate input for ringdown analysis which consideres a start time
             # and an end time
