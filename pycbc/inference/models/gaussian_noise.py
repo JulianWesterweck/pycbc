@@ -116,9 +116,7 @@ class BaseGaussianNoise(BaseDataModel):
     def __init__(self, variable_params, data, low_frequency_cutoff, psds=None,
                  high_frequency_cutoff=None, normalize=False,
                  static_params=None, ignore_failed_waveforms=False,
-                 override_delta_f=None, override_delta_t=None,
-                 override_start_time=None,
-                 **kwargs):
+                 override_delta_t=None, whitening_pad=None, **kwargs):
         # set up the boiler-plate attributes
         super(BaseGaussianNoise, self).__init__(variable_params, data,
                                                 static_params=static_params,
@@ -184,6 +182,7 @@ class BaseGaussianNoise(BaseDataModel):
         self._normalize = False
         self.normalize = normalize
         # store the psds and whiten the data
+        self.whitening_pad = whitening_pad
         self.psds = psds
 
         # Store current waveform from loglr for testing
@@ -271,11 +270,12 @@ class BaseGaussianNoise(BaseDataModel):
             self._whitened_data[det] = d.copy()
             self._whitened_data[det][kmin:kmax] *= w[kmin:kmax]
 
-            ws = d.copy()
-            ws[kmin:kmax] *= w[kmin:kmax]
-            ws = utils.fd_to_td(ws, left_window=(self._f_lower[det]-5.,self._f_lower[det]))
-            ws = ws[int(len(ws)/4):int(3/4*len(ws))]
-            self._whitened_data_short[det] = ws.to_frequencyseries()
+            if self.whitening_pad:
+                ws = d.copy()
+                ws[kmin:kmax] *= w[kmin:kmax]
+                ws = utils.fd_to_td(ws, left_window=(self._f_lower[det]-5.,self._f_lower[det]))
+                ws = ws[int(self.whitening_pad/d.delta_t):len(ws)-int(self.whitening_pad/d.delta_t)]
+                self._whitened_data_short[det] = ws.to_frequencyseries()
 
         # set the lognl and lognorm; we'll get this by just calling lognl
         _ = self.lognl
@@ -583,7 +583,8 @@ class BaseGaussianNoise(BaseDataModel):
         # any extra args
         args.update(cls.extra_args_from_config(cp, "model",
                                                skip_args=ignore_args,
-                                               dtypes={'override_delta_f':float,
+                                               dtypes={'whitening_pad':float,
+                                                       'override_delta_f':float,
                                                        'override_delta_t':float,
                                                        'override_start_time':float}))
         # get ifo-specific instances of calibration model
@@ -942,16 +943,22 @@ class GaussianNoiseEcho(BaseGaussianNoise):
 
     def __init__(self, variable_params, data, low_frequency_cutoff, psds=None,
                  high_frequency_cutoff=None, normalize=False,
-                 static_params=None, 
-                 override_delta_f=None, override_delta_t=None,
-                 override_start_time=None,
+                 static_params=None, override_delta_t=None,
+                 whitening_pad=None,
                  **kwargs):
         # set up the boiler-plate attributes
         super(GaussianNoiseEcho, self).__init__(
             variable_params, data, low_frequency_cutoff, psds=psds,
             high_frequency_cutoff=high_frequency_cutoff, normalize=normalize,
-            static_params=static_params, **kwargs)
+            static_params=static_params, whitening_pad=whitening_pad,
+            **kwargs)
         # create the waveform generator
+        override_delta_f = None
+        override_start_time = None
+        if whitening_pad:
+            det = list(self.data.keys())[0]
+            override_delta_f = self._whitened_data[det].delta_f
+            override_start_time = float(self._whitened_data[det].epoch)
         self.waveform_generator = create_waveform_generator(
             self.variable_params, self.data,
             waveform_transforms=self.waveform_transforms,
@@ -961,6 +968,8 @@ class GaussianNoiseEcho(BaseGaussianNoise):
             gates=self.gates, **self.static_params)
 
         self.override_delta_f = override_delta_f
+        self.whitening_pad = whitening_pad
+        self.override_delta_t = override_delta_t
 
     @property
     def _extra_stats(self):
@@ -998,11 +1007,11 @@ class GaussianNoiseEcho(BaseGaussianNoise):
             The value of the log likelihood ratio.
         """
         params = self.current_params
-        params['tc'] = params['tc'] - params['t_final']/2.
-        params['t_final'] = 2 * params['t_final']
+        params['tc'] = params['tc'] - self.whitening_pad
+        params['t_final'] = 2 * self.whitening_pad + params['t_final']
         temp_freq = params['f_220']
-        params['f_220'] = 8.
-        params['amp220'] = params['amp220'] * numpy.exp(512./params['tau_220'])
+        params['f_220'] = 1./self.override_delta_t * 1./4
+        params['amp220'] = params['amp220'] * numpy.exp(self.whitening_pad * 1./params['tau_220'])
         try:
             wfs = self.waveform_generator.generate(**params)
         except NoWaveformError:
@@ -1016,7 +1025,8 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         hd = 0j
         for det, h in wfs.items():
             shift_idx = int(numpy.around((temp_freq - params['f_220']) / h.delta_f))
-            h_data = numpy.zeros(int(256./h.delta_f+1), dtype=h.dtype)
+            h_data = numpy.zeros(len(self._whitened_data[det]), dtype=h.dtype)
+#            h_data = numpy.zeros(int(256./h.delta_f+1), dtype=h.dtype)
             h_data[shift_idx:shift_idx+len(h)] = h.data[:len(h)]
             h = FrequencySeries(h_data, delta_f=h.delta_f, epoch=h.epoch)
             # the kmax of the waveforms may be different than internal kmax
@@ -1033,7 +1043,7 @@ class GaussianNoiseEcho(BaseGaussianNoise):
                 h[slc] *= self._weight[det][slc]
                 # remove beginning and end padding in time domain
                 h = utils.fd_to_td(h, left_window=(self._f_lower[det]-5.,self._f_lower[det]))
-                h = h[int(len(h)/4):int(3*len(h)/4)]
+                h = h[int(self.whitening_pad/h.delta_t):len(h)-int(self.whitening_pad/h.delta_t)]
                 self.loglr_wf[det]['td_white'] = copy.deepcopy(h)
                 n_wf = len(h)
                 h = h.to_frequencyseries()
