@@ -20,10 +20,11 @@ import logging
 import shlex
 from abc import ABCMeta
 import numpy
+from scipy import special
 
 from pycbc import filter as pyfilter
 from pycbc.waveform import (NoWaveformError, FailedWaveformError)
-from pycbc.waveform import generator
+from pycbc.waveform import generator, utils
 from pycbc.types import FrequencySeries
 from pycbc.strain import gates_from_cli
 from pycbc.strain.calibration import Recalibrate
@@ -35,6 +36,7 @@ from .base import ModelStats
 from .base_data import BaseDataModel
 from .data_utils import (data_opts_from_config, data_from_cli,
                          fd_data_from_strain_dict, gate_overwhitened_data)
+import copy
 
 
 class BaseGaussianNoise(BaseDataModel, metaclass=ABCMeta):
@@ -103,6 +105,7 @@ class BaseGaussianNoise(BaseDataModel, metaclass=ABCMeta):
                  high_frequency_cutoff=None, normalize=False,
                  static_params=None, ignore_failed_waveforms=False,
                  no_save_data=False,
+                 override_delta_t=None, whitening_pad=None,
                  **kwargs):
         # set up the boiler-plate attributes
         super(BaseGaussianNoise, self).__init__(variable_params, data,
@@ -171,15 +174,22 @@ class BaseGaussianNoise(BaseDataModel, metaclass=ABCMeta):
         self._lognorm = {}
         self._det_lognls = {}
         self._whitened_data = {}
+        self._whitened_data_short = {}
 
         # set the normalization state
         self._normalize = False
         self.normalize = normalize
         # store the psds and whiten the data
+        self.whitening_pad = whitening_pad
         self.psds = psds
 
         # attribute for storing the current waveforms
         self._current_wfs = None
+
+        # Store current waveform from loglr for testing
+        self.loglr_wf = {}
+        for det in self.data.keys():
+            self.loglr_wf[det] = {'fd':[], 'td_white':[], 'fd_white':[]}
 
     @property
     def high_frequency_cutoff(self):
@@ -261,6 +271,12 @@ class BaseGaussianNoise(BaseDataModel, metaclass=ABCMeta):
             self._weight[det] = numpy.sqrt(4 * invp.delta_f * invp)
             self._whitened_data[det] = d.copy()
             self._whitened_data[det] *= self._weight[det]
+
+            if self.whitening_pad:
+                ws = self._whitened_data[det].copy()
+                ws = utils.fd_to_td(ws, left_window=(self._f_lower[det]-5.,self._f_lower[det]))
+                ws = ws[int(self.whitening_pad/d.delta_t):len(ws)-int(self.whitening_pad/d.delta_t)]
+                self._whitened_data_short[det] = ws.to_frequencyseries()
         # set the lognl and lognorm; we'll get this by just calling lognl
         _ = self.lognl
 
@@ -597,7 +613,11 @@ class BaseGaussianNoise(BaseDataModel, metaclass=ABCMeta):
         args.update({'data': data, 'psds': psds})
         # any extra args
         args.update(cls.extra_args_from_config(cp, "model",
-                                               skip_args=ignore_args))
+                                               skip_args=ignore_args,
+                                               dtypes={'whitening_pad':float,
+                                                       'override_delta_f':float,
+                                                       'override_delta_t':float,
+                                                       'override_start_time':float}))
         # get ifo-specific instances of calibration model
         if cp.has_section('calibration'):
             logging.info("Initializing calibration model")
@@ -846,13 +866,14 @@ class GaussianNoise(BaseGaussianNoise):
     def _extra_stats(self):
         """Adds ``loglr``, plus ``cplx_loglr`` and ``optimal_snrsq`` in each
         detector."""
-        return ['loglr'] + \
+        return ['loglr', 'maxl_phase'] + \
                ['{}_cplx_loglr'.format(det) for det in self._data] + \
                ['{}_optimal_snrsq'.format(det) for det in self._data]
 
     def _nowaveform_loglr(self):
         """Convenience function to set loglr values if no waveform generated.
         """
+        setattr(self._current_stats, 'maxl_phase', numpy.nan)
         for det in self._data:
             setattr(self._current_stats, 'loglikelihood', -numpy.inf)
             setattr(self._current_stats, '{}_cplx_loglr'.format(det),
@@ -1007,6 +1028,172 @@ class GaussianNoise(BaseGaussianNoise):
             # now try returning again
             return getattr(self._current_stats, '{}_optimal_snrsq'.format(det))
 
+class GaussianNoiseEcho(BaseGaussianNoise):
+    r"""Model that assumes data is stationary Gaussian noise."""
+    name = 'gaussian_noise_echo'
+
+    def __init__(self, variable_params, data, low_frequency_cutoff, psds=None,
+                 high_frequency_cutoff=None, normalize=False,
+                 static_params=None, override_delta_t=None,
+                 whitening_pad=None,
+                 **kwargs):
+        # set up the boiler-plate attributes
+        super(GaussianNoiseEcho, self).__init__(
+            variable_params, data, low_frequency_cutoff, psds=psds,
+            high_frequency_cutoff=high_frequency_cutoff, normalize=normalize,
+            static_params=static_params, whitening_pad=whitening_pad,
+            **kwargs)
+        # create the waveform generator
+        override_delta_f = None
+        override_start_time = None
+        if whitening_pad:
+            det = list(self.data.keys())[0]
+            override_delta_f = self._whitened_data[det].delta_f
+            override_start_time = float(self._whitened_data[det].epoch)
+        self.waveform_generator = create_waveform_generator(
+            self.variable_params, self.data,
+            waveform_transforms=self.waveform_transforms,
+            recalibration=self.recalibration,
+            override_delta_f=override_delta_f, override_delta_t=override_delta_t,
+            override_start_time=override_start_time,
+            gates=self.gates, **self.static_params)
+
+        self.override_delta_f = override_delta_f
+        self.whitening_pad = whitening_pad
+        self.override_delta_t = override_delta_t
+
+    @property
+    def _extra_stats(self):
+        """Adds ``loglr``, plus ``cplx_loglr`` and ``optimal_snrsq`` in each
+        detector."""
+        return ['loglr', 'maxl_phase'] + \
+               ['{}_cplx_loglr'.format(det) for det in self._data] + \
+               ['{}_optimal_snrsq'.format(det) for det in self._data]
+
+    def _nowaveform_loglr(self):
+        """Convenience function to set loglr values if no waveform generated.
+        """
+        for det in self._data:
+            setattr(self._current_stats, 'loglikelihood', -numpy.inf)
+            setattr(self._current_stats, '{}_cplx_loglr'.format(det),
+                    -numpy.inf)
+            # snr can't be < 0 by definition, so return 0
+            setattr(self._current_stats, '{}_optimal_snrsq'.format(det), 0.)
+        return -numpy.inf
+
+    def _loglr(self):
+        r"""Computes the log likelihood ratio,
+        .. math::
+            \log \mathcal{L}(\Theta) = \sum_i
+                \left<h_i(\Theta)|d_i\right> -
+                \frac{1}{2}\left<h_i(\Theta)|h_i(\Theta)\right>,
+        at the current parameter values :math:`\Theta`.
+        Returns
+        -------
+        float
+            The value of the log likelihood ratio.
+        """
+        params = self.current_params
+        params['tc'] = params['tc'] - self.whitening_pad
+        params['t_final'] = 2 * self.whitening_pad + params['t_final']
+        temp_freq = params['f_220']
+        params['f_220'] = 1./self.override_delta_t * 1./4
+        params['amp220'] = params['amp220'] * numpy.exp(self.whitening_pad * 1./params['tau_220'])
+        try:
+            wfs = self.waveform_generator.generate(**params)
+        except NoWaveformError:
+            return self._nowaveform_loglr()
+        except FailedWaveformError as e:
+            if self.ignore_failed_waveforms:
+                return self._nowaveform_loglr()
+            else:
+                raise e
+        hh = 0.
+        hd = 0j
+        for det, h in wfs.items():
+            shift_idx = int(numpy.around((temp_freq - params['f_220']) / h.delta_f))
+            h_data = numpy.zeros(len(self._whitened_data[det]), dtype=h.dtype)
+#            h_data = numpy.zeros(int(256./h.delta_f+1), dtype=h.dtype)
+            h_data[shift_idx:shift_idx+len(h)] = h.data[:len(h)]
+            h = FrequencySeries(h_data, delta_f=h.delta_f, epoch=h.epoch)
+            # the kmax of the waveforms may be different than internal kmax
+            kmax = min(len(h), self._kmax[det])
+            if self._kmin[det] >= kmax:
+                # if the waveform terminates before the filtering low frequency
+                # cutoff, then the loglr is just 0 for this detector
+                cplx_hd = 0j
+                hh = 0.
+            else:
+                slc = slice(self._kmin[det], kmax)
+                self.loglr_wf[det]['fd'] = copy.deepcopy(h)
+                # whiten the waveform
+                h[slc] *= self._weight[det][slc]
+                # remove beginning and end padding in time domain
+                h = utils.fd_to_td(h, left_window=(self._f_lower[det]-5.,self._f_lower[det]))
+                h = h[int(self.whitening_pad/h.delta_t):len(h)-int(self.whitening_pad/h.delta_t)]
+                self.loglr_wf[det]['td_white'] = copy.deepcopy(h)
+                n_wf = len(h)
+                h = h.to_frequencyseries()
+                self.loglr_wf[det]['fd_white'] = copy.deepcopy(h)
+                # update kmax for new waveform frequencyseries
+                kmin, kmax = pyfilter.get_cutoff_indices(self._f_lower[det],
+                                                         self._f_upper[det],
+                                                         h.delta_f, n_wf)
+                kmax = min(len(h), kmax)
+                slc = slice(kmin, kmax)
+
+                # the inner products
+                cplx_hd_i = self._whitened_data_short[det][slc].inner(h[slc])  # <h, d>
+                hh_i = h[slc].inner(h[slc]).real  # < h, h>
+            # store
+            setattr(self._current_stats, '{}_optimal_snrsq'.format(det), hh_i)
+            hh += hh_i
+            hd += cplx_hd_i
+        # also store the loglikelihood, to ensure it is populated in the
+        # current stats even if loglikelihood is never called
+        self._current_stats.maxl_phase = numpy.angle(hd)
+        hd = abs(hd)
+        return numpy.log(special.i0e(hd)) + hd - 0.5*hh
+
+    def det_cplx_loglr(self, det):
+        """Returns the complex log likelihood ratio in the given detector.
+        Parameters
+        ----------
+        det : str
+            The name of the detector.
+        Returns
+        -------
+        complex float :
+            The complex log likelihood ratio.
+        """
+        # try to get it from current stats
+        try:
+            return getattr(self._current_stats, '{}_cplx_loglr'.format(det))
+        except AttributeError:
+            # hasn't been calculated yet; call loglr to do so
+            self._loglr()
+            # now try returning again
+            return getattr(self._current_stats, '{}_cplx_loglr'.format(det))
+
+    def det_optimal_snrsq(self, det):
+        """Returns the opitmal SNR squared in the given detector.
+        Parameters
+        ----------
+        det : str
+            The name of the detector.
+        Returns
+        -------
+        float :
+            The opimtal SNR squared.
+        """
+        # try to get it from current stats
+        try:
+            return getattr(self._current_stats, '{}_optimal_snrsq'.format(det))
+        except AttributeError:
+            # hasn't been calculated yet; call loglr to do so
+            self._loglr()
+            # now try returning again
+            return getattr(self._current_stats, '{}_optimal_snrsq'.format(det))
 
 #
 # =============================================================================
@@ -1128,10 +1315,12 @@ def get_values_from_injection(cp, injection_file, update_cp=True):
 
 
 def create_waveform_generator(
-        variable_params, data, waveform_transforms=None,
-        recalibration=None, gates=None,
-        generator_class=generator.FDomainDetFrameGenerator,
-        **static_params):
+                variable_params, data, waveform_transforms=None,
+                recalibration=None, gates=None,
+                generator_class=generator.FDomainDetFrameGenerator,
+                override_delta_t=None, override_delta_f=None,
+                override_start_time=None,
+                **static_params):
     r"""Creates a waveform generator for use with a model.
 
     Parameters
@@ -1182,17 +1371,22 @@ def create_waveform_generator(
     generator_function = generator_class.select_rframe_generator(approximant)
     # get data parameters; we'll just use one of the data to get the
     # values, then check that all the others are the same
-    delta_f = None
-    for d in data.values():
-        if delta_f is None:
-            delta_f = d.delta_f
-            delta_t = d.delta_t
-            start_time = d.start_time
-        else:
-            if not all([d.delta_f == delta_f, d.delta_t == delta_t,
-                        d.start_time == start_time]):
-                raise ValueError("data must all have the same delta_t, "
-                                 "delta_f, and start_time")
+    if override_delta_f and override_delta_t and override_start_time:
+        delta_f = override_delta_f
+        delta_t = override_delta_t
+        start_time = override_start_time
+    else:
+        delta_f = None
+        for d in data.values():
+            if delta_f is None:
+                delta_f = d.delta_f
+                delta_t = d.delta_t
+                start_time = d.start_time
+            else:
+                if not all([d.delta_f == delta_f, d.delta_t == delta_t,
+                            d.start_time == start_time]):
+                    raise ValueError("data must all have the same delta_t, "
+                                     "delta_f, and start_time")
     waveform_generator = generator_class(
         generator_function, epoch=start_time,
         variable_args=variable_params, detectors=list(data.keys()),
