@@ -1335,7 +1335,7 @@ def echo_freq_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
     final_mass_msun = final_mass * lal.lal.MSUN_SI
     si_factor = constants.c**3. / constants.G #4.037111095068382 * 10**35.
     return si_factor * (final_spin / (2. * numpy.pi * final_mass_msun * (1.+s_sqrt)) \
-            + rs * s_sqrt / (4. * final_mass_msun * numpy.abs(numpy.log(epsilon)) * (1.+s_sqrt)))
+            + rs * s_sqrt / (final_mass_msun * numpy.abs(numpy.log(epsilon)) * (1.+s_sqrt)))
 
 
 def echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon):
