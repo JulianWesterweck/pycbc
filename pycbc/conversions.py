@@ -1614,6 +1614,7 @@ def echo_amp_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
     float
         The amplitude of the echo.
     """
+    kg_to_sec = constants.G / (constants.c**3)
     omega_r = 2.*numpy.pi*echo_freq_from_final_mass_spin_epsilon(final_mass,
                                         final_spin, epsilon, rel_sign)
     tau = echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin,
