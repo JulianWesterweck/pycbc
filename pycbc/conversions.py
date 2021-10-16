@@ -1333,12 +1333,13 @@ def echo_freq_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
     s_sqrt = numpy.sqrt(1. - final_spin**2.)
     rs = numpy.sign(rel_sign)
     final_mass_msun = final_mass * lal.lal.MSUN_SI
-    si_factor = constants.c**3. / constants.G #4.037111095068382 * 10**35.
-    return si_factor * (final_spin / (2. * numpy.pi * final_mass_msun * (1.+s_sqrt)) \
-            + rs * s_sqrt / (final_mass_msun * numpy.abs(numpy.log(epsilon)) * (1.+s_sqrt)))
+    si_factor = constants.c**3. / constants.G
+    return si_factor / (final_mass_msun * (1.+s_sqrt)) \
+            * (final_spin/(2.*numpy.pi) + rs * s_sqrt / numpy.abs(numpy.log(epsilon)))
 
 
-def echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon):
+def echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
+                                          rel_sign=1):
     """Calculates the damping time tau of the echo signal in arxiv:1811.12283v3
        from the deviation epsilon and the final mass and spin.
     Parameters
@@ -1354,16 +1355,19 @@ def echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon):
     float
         The damping time of the echo in seconds.
     """
-    s = 1. - final_spin**2.
-    si_factor = constants.G / (constants.c**3.) #2.477018780141005 * 10**(-36.)
-    return si_factor * ((450. * final_mass * lal.lal.MSUN_SI * \
-            (1.+numpy.sqrt(s))**6. * numpy.abs(numpy.log(epsilon))**7.) \
-            / (numpy.pi * s**3. * (2. * final_spin \
-            * numpy.abs(numpy.log(epsilon)) - numpy.pi * numpy.sqrt(s))**5.))
-
+    s_sqrt = numpy.sqrt(1. - final_spin**2.)
+    kg_to_sec = constants.G / (constants.c**3)
+    final_mass_msun_sec = final_mass * lal.lal.MSUN_SI * kg_to_sec
+    ln_eps = numpy.abs(numpy.log(epsilon))
+    omega_r = 2. * numpy.pi * echo_freq_from_final_mass_spin_epsilon(
+                                                     final_mass, final_spin,
+                                                     epsilon, rel_sign)
+    return 225. * ln_eps * 1./(2.*final_mass_msun_sec*s_sqrt*omega_r)**5. * \
+                1./(omega_r - final_spin/(final_mass_msun_sec*(1.+s_sqrt)))
 
 def echo_amp_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
-                                          distance, e_init, alpha=1.):
+                                          distance, e_init, alpha=1.,
+                                          rel_sign=1):
     """Calculates the amplitude of the echo signal in arxiv:1811.12283v3
        from the deviation epsilon and the final mass and spin.
     Parameters
@@ -1387,18 +1391,14 @@ def echo_amp_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
     float
         The amplitude of the echo.
     """
-    return (alpha / (distance * 1.e6 * constants.parsec)) \
-    * constants.c * numpy.sqrt( \
-    (16. * constants.G / \
-    (constants.c**3. * \
-    (2. * numpy.pi * \
-    echo_freq_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon))**2.\
-     * echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon)) \
-    ) \
-    * (e_init * lal.lal.MSUN_SI * final_spin**2. / \
-    (4. + 4. * numpy.sqrt(1.-final_spin**2.) - 2. * final_spin**2.) \
-    + e_init * lal.lal.MSUN_SI) \
-    )
+    omega_r = 2.*numpy.pi*echo_freq_from_final_mass_spin_epsilon(final_mass,
+                                        final_spin, epsilon, rel_sign)
+    tau = echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin,
+                                                epsilon, rel_sign)
+    delta_e_sec = e_init * (1. + final_spin**2./8.) * lal.lal.MSUN_SI * kg_to_sec
+    distance_sec = distance * 1.e6 * constants.parsec / constants.c
+    
+    return alpha * 4./(omega_r * distance_sec) * numpy.sqrt(delta_e_sec/tau)
 
 #
 # =============================================================================
