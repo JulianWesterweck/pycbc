@@ -1536,7 +1536,7 @@ def final_spin_from_initial(mass1, mass2, spin1x=0., spin1y=0., spin1z=0.,
                                   f_ref=f_ref)[1]
 
 def echo_freq_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
-                                           rel_sign=1):
+                                           rel_sign=1, q=1, m=2, s=-2):
     """Calculates the frequency of the echo signal in arxiv:1811.12283v3
        from the final mass and spin.
     Parameters
@@ -1555,10 +1555,10 @@ def echo_freq_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
     """
     s_sqrt = numpy.sqrt(1. - final_spin**2.)
     rs = numpy.sign(rel_sign)
-    final_mass_msun = final_mass * lal.lal.MSUN_SI
-    si_factor = constants.c**3. / constants.G
-    return si_factor / (final_mass_msun * (1.+s_sqrt)) \
-            * (final_spin/(2.*numpy.pi) + rs * s_sqrt / numpy.abs(numpy.log(epsilon)))
+    num_factor = q + s*(s+1.)/2.
+    final_mass_sec = final_mass * lal.lal.MSUN_SI * constants.G / constants.c**3.
+    return 1./(4.*numpy.pi*final_mass_sec * (1.+s_sqrt)) \
+            * (m*final_spin + rs*numpy.pi*num_factor*s_sqrt / numpy.abs(numpy.log(epsilon)))
 
 
 def echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
