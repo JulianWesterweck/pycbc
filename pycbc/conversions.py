@@ -1562,7 +1562,7 @@ def echo_freq_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
 
 
 def echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
-                                          rel_sign=1):
+                                          rel_sign=1, q=1, m=2, s=-2):
     """Calculates the damping time tau of the echo signal in arxiv:1811.12283v3
        from the deviation epsilon and the final mass and spin.
     Parameters
@@ -1584,13 +1584,14 @@ def echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
     ln_eps = numpy.abs(numpy.log(epsilon))
     omega_r = 2. * numpy.pi * echo_freq_from_final_mass_spin_epsilon(
                                                      final_mass, final_spin,
-                                                     epsilon, rel_sign)
+                                                     epsilon, rel_sign,
+                                                     q, m, s)
     return 225. * ln_eps * 1./(2.*final_mass_msun_sec*s_sqrt*omega_r)**5. * \
                 1./(omega_r - final_spin/(final_mass_msun_sec*(1.+s_sqrt)))
 
 def echo_amp_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
                                           distance, e_init, alpha=1.,
-                                          rel_sign=1):
+                                          rel_sign=1, q=1, m=2, s=-2):
     """Calculates the amplitude of the echo signal in arxiv:1811.12283v3
        from the deviation epsilon and the final mass and spin.
     Parameters
@@ -1616,9 +1617,11 @@ def echo_amp_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
     """
     kg_to_sec = constants.G / (constants.c**3)
     omega_r = 2.*numpy.pi*echo_freq_from_final_mass_spin_epsilon(final_mass,
-                                        final_spin, epsilon, rel_sign)
+                                        final_spin, epsilon, rel_sign,
+                                        q, m, s)
     tau = echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin,
-                                                epsilon, rel_sign)
+                                                epsilon, rel_sign,
+                                                q, m, s)
     delta_e_sec = e_init * (1. + final_spin**2./8.) * lal.lal.MSUN_SI * kg_to_sec
     distance_sec = distance * 1.e6 * constants.parsec / constants.c
     
