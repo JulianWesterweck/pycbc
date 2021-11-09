@@ -37,7 +37,7 @@ from pycbc import waveform
 from pycbc import frame
 from pycbc.opt import LimitedSizeDict
 from pycbc.waveform import get_td_waveform, utils as wfutils
-from pycbc.waveform import ringdown_td_approximants
+from pycbc.waveform import ringdown_td_approximants, sine_td_approximants
 from pycbc.types import float64, float32, TimeSeries, load_timeseries
 from pycbc.detector import Detector
 from pycbc.conversions import tau0_from_mass1_mass2
@@ -769,6 +769,120 @@ class RingdownHDFInjectionSet(_HDFInjectionSet):
         return list(waveform.ringdown_td_approximants.keys())
 
 
+class SineHDFInjectionSet(_HDFInjectionSet):
+    """Manages a sine wave injection: reads injection from hdf file
+    and injects it into time series.
+    """
+    injtype = 'sine'
+    required_params = ('tc',)
+
+    def apply(self, strain, detector_name, distance_scale=1,
+              simulation_ids=None, inj_filter_rejector=None,
+              injection_sample_rate=None):
+        """Add injection (as seen by a particular detector) to a time series.
+
+        Parameters
+        ----------
+        strain : TimeSeries
+            Time series to inject signals into, of type float32 or float64.
+        detector_name : string
+            Name of the detector used for projecting injections.
+        distance_scale: float, optional
+            Factor to scale the distance of an injection with. The default (=1)
+            is no scaling.
+        simulation_ids: iterable, optional
+            If given, only inject signals with the given simulation IDs.
+        inj_filter_rejector: InjFilterRejector instance, optional
+            Not implemented. If not ``None``, a ``NotImplementedError`` will
+            be raised.
+        injection_sample_rate: float, optional
+            The sample rate to generate the signal before injection
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        NotImplementedError
+            If an ``inj_filter_rejector`` is provided.
+        TypeError
+            For invalid types of `strain`.
+        """
+        if inj_filter_rejector is not None:
+            raise NotImplementedError("Sine injections do not support "
+                                      "inj_filter_rejector")
+        if strain.dtype not in (float32, float64):
+            raise TypeError("Strain dtype must be float32 or float64, not " \
+                    + str(strain.dtype))
+
+        lalstrain = strain.lal()
+
+        # pick lalsimulation injection function
+        add_injection = injection_func_map[strain.dtype]
+
+        delta_t = strain.delta_t
+        if injection_sample_rate is not None:
+            delta_t = 1.0 / injection_sample_rate
+
+        injections = self.table
+        if simulation_ids:
+            injections = injections[list(simulation_ids)]
+        for ii in range(injections.size):
+            injection = injections[ii]
+            signal = self.make_strain_from_inj_object(
+                injection, delta_t, detector_name,
+                distance_scale=distance_scale)
+            signal = resample_to_delta_t(signal, strain.delta_t, method='ldas')
+            signal = signal.astype(strain.dtype)
+            signal_lal = signal.lal()
+            add_injection(lalstrain, signal_lal, None)
+
+            strain.data[:] = lalstrain.data.data[:]
+
+    def make_strain_from_inj_object(self, inj, delta_t, detector_name,
+                                    distance_scale=1):
+        """Make a h(t) strain time-series from an injection object as read from
+        an hdf file.
+
+        Parameters
+        -----------
+        inj : injection object
+            The injection object to turn into a strain h(t).
+        delta_t : float
+            Sample rate to make injection at.
+        detector_name : string
+            Name of the detector used for projecting injections.
+        distance_scale: float, optional
+            Factor to scale the distance of an injection with. The default (=1)
+            is no scaling.
+
+        Returns
+        --------
+        signal : float
+            h(t) corresponding to the injection.
+        """
+        # compute the waveform time series
+        hp, hc = sine_td_approximants[inj['approximant']](
+            inj, delta_t=delta_t, **self.extra_args)
+        return projector(detector_name,
+                         inj, hp, hc, distance_scale=distance_scale)
+
+    def end_times(self):
+        """Return the approximate end times of all injections.
+
+        Currently, this just assumes all sine waves are 2 seconds long.
+        """
+        # the start times are the tcs
+        tcs = self.table.tc
+        # FIXME: Each injection's t_final could be used instead.
+        return tcs + 2
+
+    @staticmethod
+    def supported_approximants():
+        return list(waveform.sine_td_approximants.keys())
+
+
 class IncoherentFromFileHDFInjectionSet(_HDFInjectionSet):
     """Manages injecting an arbitrary time series loaded from a file.
 
@@ -1011,6 +1125,7 @@ class IncoherentFromFileHDFInjectionSet(_HDFInjectionSet):
 hdfinjtypes = {
     CBCHDFInjectionSet.injtype: CBCHDFInjectionSet,
     RingdownHDFInjectionSet.injtype: RingdownHDFInjectionSet,
+    SineHDFInjectionSet.injtype: SineHDFInjectionSet,
     IncoherentFromFileHDFInjectionSet.injtype:
     IncoherentFromFileHDFInjectionSet,
 }

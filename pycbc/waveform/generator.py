@@ -33,6 +33,7 @@ from six import add_metaclass
 from . import waveform
 from .waveform import (FailedWaveformError)
 from . import ringdown
+from . import sine
 from . import supernovae
 from . import waveform_modes
 from pycbc import transforms
@@ -477,6 +478,34 @@ class TDomainFreqTauRingdownGenerator(BaseGenerator):
     """
     def __init__(self, variable_args=(), **frozen_params):
         super(TDomainFreqTauRingdownGenerator, self).__init__(ringdown.get_td_from_freqtau,
+            variable_args=variable_args, **frozen_params)
+
+
+class TDomainSineGenerator(BaseGenerator):
+    """Uses sine.td_sine as a generator function to
+    create time-domain sine waveforms in the radiation frame;
+    i.e., with no detector response function applied.
+    For more details, see BaseGenerator.
+
+    Examples
+    --------
+    Initialize a generator:
+
+    >>> from pycbc.waveform.generator import TDomainSineGenerator
+    >>> generator = TDomainSineGenerator(variable_args=['freq',
+                    'phi','amp','t_final','inclination'],
+                    delta_t=1./2048)
+
+    Create a sine with the variable arguments:
+
+    >>> generator.generate(freq=150., phi=1.2, amp=1e-20., t_final=10.,
+                           inclination=2.)
+        (<pycbc.types.frequencyseries.FrequencySeries at 0x51614d0>,
+         <pycbc.types.frequencyseries.FrequencySeries at 0x5161550>)
+
+    """
+    def __init__(self, variable_args=(), **frozen_params):
+        super(TDomainSineGenerator, self).__init__(sine.td_sine,
             variable_args=variable_args, **frozen_params)
 
 
@@ -1121,6 +1150,10 @@ def select_waveform_generator(approximant):
             return TDomainMassSpinRingdownGenerator
         elif approximant == 'TdQNMfromFreqTau':
             return TDomainFreqTauRingdownGenerator
+    # Check if time-domain sine waveform
+    elif approximant in sine.sine_td_approximants:
+        if approximant == 'TdSine':
+            return TDomainSineGenerator
     # check if supernovae waveform:
     elif approximant in supernovae.supernovae_td_approximants:
         if approximant == 'CoreCollapseBounce':

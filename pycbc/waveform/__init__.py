@@ -2,6 +2,7 @@ from pycbc.waveform.waveform import *
 from pycbc.waveform.utils import *
 from pycbc.waveform.bank import *
 from pycbc.waveform.ringdown import *
+from pycbc.waveform.sine import *
 from pycbc.waveform.parameters import *
 from pycbc.waveform.waveform_modes import (get_td_waveform_modes,
                                            get_fd_waveform_modes)
