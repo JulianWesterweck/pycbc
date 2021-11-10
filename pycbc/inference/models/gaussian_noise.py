@@ -1021,8 +1021,16 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         params = self.current_params
         params['tc'] = params['tc'] - self.whitening_pad
         params['t_final'] = 2 * self.whitening_pad + params['t_final']
-        temp_freq = params['f_220']
-        params['f_220'] = 1./self.override_delta_t * 1./4
+        freq_idx = int(params['f_220'] / self.override_delta_f)
+        #print("freq_idx", freq_idx)
+        freq_rem = params['f_220'] - freq_idx * self.override_delta_f
+        #print("freq_rem", freq_rem)
+        gen_freq_idx = int((1./self.override_delta_t * 1./4) / self.override_delta_f)
+        #print("gen_freq_idx", gen_freq_idx)
+        params['f_220'] = gen_freq_idx * self.override_delta_f + freq_rem
+        #print("params['f_220']", params['f_220'])
+        shift_idx = freq_idx - gen_freq_idx
+        #print("shift_idx", shift_idx)
         params['amp220'] = params['amp220'] * numpy.exp(self.whitening_pad * 1./params['tau_220'])
         try:
             wfs = self.waveform_generator.generate(**params)
@@ -1036,7 +1044,6 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         hh = 0.
         hd = 0j
         for det, h in wfs.items():
-            shift_idx = int(numpy.around((temp_freq - params['f_220']) / h.delta_f))
             h_data = numpy.zeros(len(self._whitened_data[det]), dtype=h.dtype)
 #            h_data = numpy.zeros(int(256./h.delta_f+1), dtype=h.dtype)
             h_data[shift_idx:shift_idx+len(h)] = h.data[:len(h)]
