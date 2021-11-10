@@ -263,6 +263,7 @@ class BaseGaussianNoise(BaseDataModel):
         self._lognorm.clear()
         self._det_lognls.clear()
         self._whitened_data.clear()
+        self._whitened_data_short.clear()
         for det, d in self._data.items():
             if psds is None:
                 # No psd means assume white PSD
@@ -919,6 +920,7 @@ class GaussianNoise(BaseGaussianNoise):
                 # whiten the waveform
                 h[self._kmin[det]:kmax] *= self._weight[det][slc]
                 # the inner products
+                self.loglr_wf[det]['fd_white'] = copy.deepcopy(h)
                 cplx_hd = self._whitened_data[det][slc].inner(h[slc])  # <h, d>
                 hh = h[slc].inner(h[slc]).real  # < h, h>
             cplx_loglr = cplx_hd - 0.5 * hh
@@ -996,8 +998,9 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         override_start_time = None
         if whitening_pad:
             det = list(self.data.keys())[0]
-            override_delta_f = self._whitened_data[det].delta_f
             override_start_time = float(self._whitened_data[det].epoch)
+            if override_delta_t:
+                override_delta_f = self._whitened_data[det].delta_f
         self.waveform_generator = create_waveform_generator(
             self.variable_params, self.data,
             waveform_transforms=self.waveform_transforms,
@@ -1041,19 +1044,21 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         float
             The value of the log likelihood ratio.
         """
-        params = self.current_params
+        params = copy.deepcopy(self.current_params)
         params['tc'] = params['tc'] - self.whitening_pad
         params['t_final'] = 2 * self.whitening_pad + params['t_final']
-        freq_idx = int(params['f_220'] / self.override_delta_f)
-        #print("freq_idx", freq_idx)
-        freq_rem = params['f_220'] - freq_idx * self.override_delta_f
-        #print("freq_rem", freq_rem)
-        gen_freq_idx = int((1./self.override_delta_t * 1./4) / self.override_delta_f)
-        #print("gen_freq_idx", gen_freq_idx)
-        params['f_220'] = gen_freq_idx * self.override_delta_f + freq_rem
-        #print("params['f_220']", params['f_220'])
-        shift_idx = freq_idx - gen_freq_idx
-        #print("shift_idx", shift_idx)
+        #print(self.override_delta_t)
+        if self.override_delta_t:
+            freq_idx = int(params['f_220'] / self.override_delta_f)
+            #print("freq_idx", freq_idx)
+            freq_rem = params['f_220'] - freq_idx * self.override_delta_f
+            #print("freq_rem", freq_rem)
+            gen_freq_idx = int((1./self.override_delta_t * 1./4) / self.override_delta_f)
+            #print("gen_freq_idx", gen_freq_idx)
+            params['f_220'] = gen_freq_idx * self.override_delta_f + freq_rem
+            #print("params['f_220']", params['f_220'])
+            shift_idx = freq_idx - gen_freq_idx
+            #print("shift_idx", shift_idx)
         params['amp220'] = params['amp220'] * numpy.exp(self.whitening_pad * 1./params['tau_220'])
         try:
             wfs = self.waveform_generator.generate(**params)
@@ -1067,17 +1072,18 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         hh = 0.
         hd = 0j
         for det, h in wfs.items():
-            h_data = numpy.zeros(len(self._whitened_data[det]), dtype=h.dtype)
-#            h_data = numpy.zeros(int(256./h.delta_f+1), dtype=h.dtype)
-            h_data[shift_idx:shift_idx+len(h)] = h.data[:len(h)]
-            h = FrequencySeries(h_data, delta_f=h.delta_f, epoch=h.epoch)
+            if self.override_delta_t:
+                h_data = numpy.zeros(len(self._whitened_data[det]), dtype=h.dtype)
+    #            h_data = numpy.zeros(int(256./h.delta_f+1), dtype=h.dtype)
+                h_data[shift_idx:shift_idx+len(h)] = h.data[:len(h)]
+                h = FrequencySeries(h_data, delta_f=h.delta_f, epoch=h.epoch)
             # the kmax of the waveforms may be different than internal kmax
             kmax = min(len(h), self._kmax[det])
             if self._kmin[det] >= kmax:
                 # if the waveform terminates before the filtering low frequency
                 # cutoff, then the loglr is just 0 for this detector
-                cplx_hd = 0j
-                hh = 0.
+                hd_i = 0j
+                hh_i = 0.
             else:
                 slc = slice(self._kmin[det], kmax)
                 self.loglr_wf[det]['fd'] = copy.deepcopy(h)
@@ -1098,12 +1104,12 @@ class GaussianNoiseEcho(BaseGaussianNoise):
                 slc = slice(kmin, kmax)
 
                 # the inner products
-                cplx_hd_i = self._whitened_data_short[det][slc].inner(h[slc])  # <h, d>
+                hd_i = self._whitened_data_short[det][slc].inner(h[slc])  # <h, d>
                 hh_i = h[slc].inner(h[slc]).real  # < h, h>
             # store
             setattr(self._current_stats, '{}_optimal_snrsq'.format(det), hh_i)
             hh += hh_i
-            hd += cplx_hd_i
+            hd += hd_i
         # also store the loglikelihood, to ensure it is populated in the
         # current stats even if loglikelihood is never called
         self._current_stats.maxl_phase = numpy.angle(hd)
