@@ -26,6 +26,7 @@ This modules provides classes for generating waveforms.
 """
 import os
 import logging
+import numpy
 
 from abc import (ABCMeta, abstractmethod)
 
@@ -43,6 +44,7 @@ from pycbc.detector import Detector
 from pycbc.pool import use_mpi
 import lal as _lal
 from pycbc import strain
+from pycbc.types import FrequencySeries
 
 
 # utility functions/class
@@ -651,18 +653,32 @@ class FDomainDetFrameGenerator(BaseFDomainDetFrameGenerator):
         is None, tc may optionally be provided.
     """
 
-    def generate(self, **kwargs):
+    def generate(self, shift_idx=None, freq_len=None, **kwargs):
         """Generates a waveform, applies a time shift and the detector response
         function from the given kwargs.
         """
+        print("kwargs", kwargs)
         self.current_params.update(kwargs)
+        print("current_params", self.current_params)
         rfparams = {param: self.current_params[param]
             for param in kwargs if param not in self.location_args}
         hp, hc = self.rframe_generator.generate(**rfparams)
+        print("hp.delta_t", hp.delta_t)
+        print("len(hp)", len(hp))
         if isinstance(hp, TimeSeries):
             df = self.current_params['delta_f']
             hp = hp.to_frequencyseries(delta_f=df)
             hc = hc.to_frequencyseries(delta_f=df)
+            if shift_idx:
+                print("shift_idx:", shift_idx)
+                print("hp", hp)
+                print("len(hp)", len(hp))
+                hp_data = numpy.zeros(freq_len, dtype=hp.dtype)
+                hc_data = numpy.zeros(freq_len, dtype=hc.dtype)
+                hp_data[shift_idx:shift_idx+len(hp)] = hp.data[:len(hp)]
+                hc_data[shift_idx:shift_idx+len(hc)] = hc.data[:len(hc)]
+                hp = FrequencySeries(hp_data, delta_f=hp.delta_f, epoch=hp.epoch)
+                hc = FrequencySeries(hc_data, delta_f=hc.delta_f, epoch=hc.epoch)
             # time-domain waveforms will not be shifted so that the peak amp
             # happens at the end of the time series (as they are for f-domain),
             # so we add an additional shift to account for it
