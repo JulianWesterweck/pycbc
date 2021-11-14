@@ -1024,19 +1024,13 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         params = copy.deepcopy(self.current_params)
         params['tc'] = params['tc'] - self.whitening_pad
         params['t_final'] = 2 * self.whitening_pad + params['t_final']
-        #print(self.override_delta_t)
         shift_idx = None
         if self.override_delta_t:
             freq_idx = int(params['f_220'] / self.override_delta_f)
-            #print("freq_idx", freq_idx)
             freq_rem = params['f_220'] - freq_idx * self.override_delta_f
-            #print("freq_rem", freq_rem)
             gen_freq_idx = int((1./self.override_delta_t * 1./4) / self.override_delta_f)
-            #print("gen_freq_idx", gen_freq_idx)
             params['f_220'] = gen_freq_idx * self.override_delta_f + freq_rem
-            #print("params['f_220']", params['f_220'])
             shift_idx = freq_idx - gen_freq_idx
-            #print("shift_idx", shift_idx)
             det = list(self.data.keys())[0]
             freq_len = len(self._whitened_data[det])
         params['amp220'] = params['amp220'] * numpy.exp(self.whitening_pad * 1./params['tau_220'])
@@ -1053,11 +1047,6 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         hh = 0.
         hd = 0j
         for det, h in wfs.items():
-#            if self.override_delta_t:
-#                h_data = numpy.zeros(len(self._whitened_data[det]), dtype=h.dtype)
-#    #            h_data = numpy.zeros(int(256./h.delta_f+1), dtype=h.dtype)
-#                h_data[shift_idx:shift_idx+len(h)] = h.data[:len(h)]
-#                h = FrequencySeries(h_data, delta_f=h.delta_f, epoch=h.epoch)
             # the kmax of the waveforms may be different than internal kmax
             kmax = min(len(h), self._kmax[det])
             if self._kmin[det] >= kmax:
