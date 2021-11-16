@@ -1,13 +1,16 @@
 import numpy
 from pycbc.types import TimeSeries
 
-def td_sine(**kwargs):
+def td_sine(template=None, **kwargs):
     """
     Generates a sine waveform in the time domain,
     starting abruptly at tc.
 
     Parameters
     ----------
+    template : object
+        An object that has attached properties. This can be used to substitute
+        for keyword arguments. A common example would be a row in an xml table.
     freq : float
         Frequency of the sine wave.
     phi : float
