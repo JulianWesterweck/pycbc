@@ -24,7 +24,7 @@ def props(obj, required, domain_args, **kwargs):
 
     return input_params
 
-def td_sine(**kwargs):
+def td_sine(input_params):
     """
     Generates a sine waveform in the time domain,
     starting abruptly at tc.
@@ -53,12 +53,12 @@ def td_sine(**kwargs):
         The cross polarisation of the sine waveform.
     -------
     """
-    dt = kwargs['delta_t']
-    f = kwargs['freq']
-    t_final = kwargs['t_final']
-    amp = kwargs['amp']
-    inclination = kwargs['inclination']
-    phi = kwargs['phi']
+    dt = input_params['delta_t']
+    f = input_params['freq']
+    t_final = input_params['t_final']
+    amp = input_params['amp']
+    inclination = input_params['inclination']
+    phi = input_params['phi']
 
     times = numpy.arange(0, t_final, dt)
 
