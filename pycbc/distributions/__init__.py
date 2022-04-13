@@ -32,6 +32,7 @@ from pycbc.distributions.power_law import UniformPowerLaw, UniformRadius
 from pycbc.distributions.sky_location import UniformSky, FisherSky
 from pycbc.distributions.uniform import Uniform
 from pycbc.distributions.uniform_log import UniformLog10
+from pycbc.distributions.uniform_exp import UniformExp10
 from pycbc.distributions.spins import IndependentChiPChiEff
 from pycbc.distributions.qnm import UniformF0Tau
 from pycbc.distributions.joint import JointDistribution
@@ -55,6 +56,7 @@ distribs = {
     UniformSolidAngle.name : UniformSolidAngle,
     UniformSky.name : UniformSky,
     UniformLog10.name : UniformLog10,
+    UniformExp10.name : UniformExp10,
     UniformF0Tau.name : UniformF0Tau,
     External.name: External,
     DistributionFunctionFromFile.name: DistributionFunctionFromFile,
