@@ -253,6 +253,7 @@ class BaseGaussianNoise(BaseDataModel, metaclass=ABCMeta):
         self._det_lognls.clear()
         self._whitened_data.clear()
         self._whitened_data_short.clear()
+
         for det, d in self._data.items():
             if psds is None:
                 # No psd means assume white PSD
@@ -278,6 +279,24 @@ class BaseGaussianNoise(BaseDataModel, metaclass=ABCMeta):
                 ws = utils.fd_to_td(ws, left_window=(self._f_lower[det]-5.,self._f_lower[det]))
                 ws = ws[int(self.whitening_pad/d.delta_t):len(ws)-int(self.whitening_pad/d.delta_t)]
                 self._whitened_data_short[det] = ws.to_frequencyseries()
+
+        # Set the cutoff indices, time-domain samples for short data segment
+        if self.whitening_pad:
+
+            self._N_short = {}
+            for (det, d) in self._whitened_data_short.items():
+                self._N_short[det] = int(1./(d.delta_f*d.delta_t))
+
+            self._kmin_short = {}
+            self._kmax_short = {}
+
+            for (det, d) in self._whitened_data_short.items():
+                kmin_short, kmax_short = pyfilter.get_cutoff_indices(self._f_lower[det],
+                                                         self._f_upper[det],
+                                                         d.delta_f, self._N[det])
+                self._kmin_short[det] = kmin_short
+                self._kmax_short[det] = kmax_short
+
         # set the lognl and lognorm; we'll get this by just calling lognl
         _ = self.lognl
 
@@ -1064,6 +1083,100 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         self.override_delta_f = override_delta_f
         self.whitening_pad = whitening_pad
         self.override_delta_t = override_delta_t
+
+    def det_lognorm(self, det):
+        """The log of the likelihood normalization in the given detector.
+
+        If ``self.normalize`` is False, will just return 0.
+        """
+        if not self.normalize:
+            return 0.
+        try:
+            return self._lognorm[det]
+        except KeyError:
+            # hasn't been calculated yet
+            p = self._psds[det]
+            if self.whitening_pad:
+                dt = self._whitened_data_short[det].delta_t
+                kmin = self._kmin_short[det]
+                kmax = self._kmax_short[det]
+                lognorm = -float(self._N_short[det]*numpy.log(numpy.pi*self._N_short[det]*dt)/2.
+                                 + numpy.log(p[kmin:kmax]).sum())
+            else:
+                dt = self._whitened_data[det].delta_t
+                kmin = self._kmin[det]
+                kmax = self._kmax[det]
+                lognorm = -float(self._N[det]*numpy.log(numpy.pi*self._N[det]*dt)/2.
+                                 + numpy.log(p[kmin:kmax]).sum())
+            self._lognorm[det] = lognorm
+            return self._lognorm[det]
+
+    @property
+    def normalize(self):
+        """Determines if the loglikelihood includes the normalization term.
+        """
+        return self._normalize
+
+    @normalize.setter
+    def normalize(self, normalize):
+        """Clears the current stats if the normalization state is changed.
+        """
+        if normalize != self._normalize:
+            self._current_stats = ModelStats()
+            self._lognorm.clear()
+            self._det_lognls.clear()
+        self._normalize = normalize
+
+    @property
+    def lognorm(self):
+        """The log of the normalization of the log likelihood."""
+        return sum(self.det_lognorm(det) for det in self._data)
+
+    def det_lognl(self, det):
+        r"""Returns the log likelihood of the noise in the given detector:
+
+        .. math::
+
+            \log p(d_i|n_i) = \log \alpha_i -
+                \frac{1}{2} \left<d_i | d_i\right>.
+
+
+        Parameters
+        ----------
+        det : str
+            The name of the detector.
+
+        Returns
+        -------
+        float :
+            The log likelihood of the noise in the requested detector.
+        """
+        try:
+            return self._det_lognls[det]
+        except KeyError:
+            # hasn't been calculated yet; calculate & store
+            if self.whitening_pad:
+                kmin = self._kmin_short[det]
+                kmax = self._kmax_short[det]
+                d = self._whitened_data_short[det]
+                lognorm = self.det_lognorm(det)
+                lognl = lognorm - 0.5 * d[kmin:kmax].inner(d[kmin:kmax]).real
+            else:
+                kmin = self._kmin[det]
+                kmax = self._kmax[det]
+                d = self._whitened_data[det]
+                lognorm = self.det_lognorm(det)
+                lognl = lognorm - 0.5 * d[kmin:kmax].inner(d[kmin:kmax]).real
+            self._det_lognls[det] = lognl
+            return self._det_lognls[det]
+
+    def _lognl(self):
+        """Computes the log likelihood assuming the data is noise.
+
+        Since this is a constant for Gaussian noise, this is only computed once
+        then stored.
+        """
+        return sum(self.det_lognl(det) for det in self._data)
 
     @property
     def _extra_stats(self):
