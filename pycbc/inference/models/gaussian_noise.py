@@ -175,6 +175,7 @@ class BaseGaussianNoise(BaseDataModel, metaclass=ABCMeta):
         self._det_lognls = {}
         self._whitened_data = {}
         self._whitened_data_short = {}
+        self._det_lognls_long = {}
 
         # set the normalization state
         self._normalize = False
@@ -1161,13 +1162,14 @@ class GaussianNoiseEcho(BaseGaussianNoise):
                 d = self._whitened_data_short[det]
                 lognorm = self.det_lognorm(det)
                 lognl = lognorm - 0.5 * d[kmin:kmax].inner(d[kmin:kmax]).real
-            else:
+                self._det_lognls[det] = lognl
+
                 kmin = self._kmin[det]
                 kmax = self._kmax[det]
                 d = self._whitened_data[det]
                 lognorm = self.det_lognorm(det)
                 lognl = lognorm - 0.5 * d[kmin:kmax].inner(d[kmin:kmax]).real
-            self._det_lognls[det] = lognl
+                self._det_lognls_long[det] = lognl
             return self._det_lognls[det]
 
     def _lognl(self):
@@ -1213,18 +1215,26 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         params['tc'] = params['tc'] - self.whitening_pad
         params['t_final'] = 2 * self.whitening_pad + params['t_final']
         shift_idx = None
+        freq_len = None
+        odt, odf = None, None
         if self.override_delta_t:
             freq_idx = int(params['f_220'] / self.override_delta_f)
             freq_rem = params['f_220'] - freq_idx * self.override_delta_f
             gen_freq_idx = int((1./self.override_delta_t * 1./4) / self.override_delta_f)
-            params['f_220'] = gen_freq_idx * self.override_delta_f + freq_rem
-            shift_idx = freq_idx - gen_freq_idx
-            det = list(self.data.keys())[0]
-            freq_len = len(self._whitened_data[det])
+            gen_freq = gen_freq_idx * self.override_delta_f + freq_rem
+            if gen_freq < params['f_220']:
+                params['f_220'] = gen_freq
+                shift_idx = freq_idx - gen_freq_idx
+                det = list(self.data.keys())[0]
+                freq_len = len(self._whitened_data[det])
+                odt, odf = self.override_delta_t, self.override_delta_f
+            else:
+                print("No heterodyning required.")
         params['amp220'] = params['amp220'] * numpy.exp(self.whitening_pad * 1./params['tau_220'])
         try:
             wfs = self.waveform_generator.generate(shift_idx=shift_idx,
-                       freq_len=freq_len, **params)
+                       freq_len=freq_len, override_delta_t=odt,
+                       override_delta_f=odf, **params)
         except NoWaveformError:
             return self._nowaveform_loglr()
         except FailedWaveformError as e:
@@ -1271,6 +1281,7 @@ class GaussianNoiseEcho(BaseGaussianNoise):
         # also store the loglikelihood, to ensure it is populated in the
         # current stats even if loglikelihood is never called
         self._current_stats.maxl_phase = numpy.angle(hd)
+#        self._current_stats.loglr_nomarg = (hd - 0.5 * hh).real
         hd = abs(hd)
         return numpy.log(special.i0e(hd)) + hd - 0.5*hh
 
@@ -1490,22 +1501,22 @@ def create_waveform_generator(
     generator_function = generator_class.select_rframe_generator(approximant)
     # get data parameters; we'll just use one of the data to get the
     # values, then check that all the others are the same
-    if override_delta_f and override_delta_t and override_start_time:
+    delta_f = None
+    for d in data.values():
+        if delta_f is None:
+            delta_f = d.delta_f
+            delta_t = d.delta_t
+            start_time = d.start_time
+        else:
+            if not all([d.delta_f == delta_f, d.delta_t == delta_t,
+                        d.start_time == start_time]):
+                raise ValueError("data must all have the same delta_t, "
+                                 "delta_f, and start_time")
+    if override_delta_t:
         delta_f = override_delta_f
         delta_t = override_delta_t
+    if override_start_time:
         start_time = override_start_time
-    else:
-        delta_f = None
-        for d in data.values():
-            if delta_f is None:
-                delta_f = d.delta_f
-                delta_t = d.delta_t
-                start_time = d.start_time
-            else:
-                if not all([d.delta_f == delta_f, d.delta_t == delta_t,
-                            d.start_time == start_time]):
-                    raise ValueError("data must all have the same delta_t, "
-                                     "delta_f, and start_time")
     waveform_generator = generator_class(
         generator_function, epoch=start_time,
         variable_args=variable_params, detectors=list(data.keys()),
