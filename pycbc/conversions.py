@@ -1037,7 +1037,7 @@ def snr_from_loglr(loglr):
 #
 
 
-def get_lm_f0tau(mass, spin, l, m, n=0, which='both'):
+def get_lm_f0tau(mass, spin, l, m, n=0, which='both', scalar_driven=None):
     """Return the f0 and the tau for one or more overtones of an l, m mode.
 
     Parameters
@@ -1056,6 +1056,9 @@ def get_lm_f0tau(mass, spin, l, m, n=0, which='both'):
     which : {'both', 'f0', 'tau'}, optional
         What to return; 'both' returns both frequency and tau, 'f0' just
         frequency, 'tau' just tau. Default is 'both'.
+    scalar_driven : {None,  True}, optional
+        Keyword determining if standard QNM (None) or
+        scalar QNM (True) parameters will be returned. Default is None.
 
     Returns
     -------
@@ -1075,17 +1078,18 @@ def get_lm_f0tau(mass, spin, l, m, n=0, which='both'):
     gettau = which == 'both' or which == 'tau'
     out = []
     if getf0:
-        f0s = pykerr.qnmfreq(mass, spin, l, m, n)
+        f0s = pykerr.qnmfreq(mass, spin, l, m, n, scalar_driven)
         out.append(formatreturn(f0s, input_is_array))
     if gettau:
-        taus = pykerr.qnmtau(mass, spin, l, m, n)
+        taus = pykerr.qnmtau(mass, spin, l, m, n, scalar_driven)
         out.append(formatreturn(taus, input_is_array))
     if not (getf0 and gettau):
+        print(out)
         out = out[0]
     return out
 
 
-def get_lm_f0tau_allmodes(mass, spin, modes):
+def get_lm_f0tau_allmodes(mass, spin, modes, scalar_driven=None):
     """Returns a dictionary of all of the frequencies and damping times for the
     requested modes.
 
@@ -1100,6 +1104,9 @@ def get_lm_f0tau_allmodes(mass, spin, modes):
         'lmN', where l (m) is the l (m) index of the harmonic and N is the
         number of overtones to generate (note, N is not the index of the
         overtone).
+    scalar_driven : {None,  True}, optional
+        Keyword determining if standard QNM (None) or
+        scalar QNM (True) parameters will be returned. Default is None.
 
     Returns
     -------
@@ -1117,7 +1124,8 @@ def get_lm_f0tau_allmodes(mass, spin, modes):
         key = '{}{}{}'
         l, m, nmodes = int(lmn[0]), int(lmn[1]), int(lmn[2])
         for n in range(nmodes):
-            tmp_f0, tmp_tau = get_lm_f0tau(mass, spin, l, m, n)
+            tmp_f0, tmp_tau = get_lm_f0tau(mass, spin, l, m, n,
+                                           scalar_driven=scalar_driven)
             f0[key.format(l, abs(m), n)] = tmp_f0
             tau[key.format(l, abs(m), n)] = tmp_tau
     return f0, tau
