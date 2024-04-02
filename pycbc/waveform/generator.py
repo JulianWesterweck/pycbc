@@ -398,27 +398,15 @@ class TDomainMassSpinRingdownGenerator(BaseGenerator):
             variable_args=variable_args, **frozen_params)
 
 
-class TDomainMassSpinRingdownPlusSDGenerator(BaseGenerator):
-    """Uses ringdown.get_td_from_final_mass_spin_scalar_tensor as a generator function to
+class TDomainMassSpinRingdownDrivenGenerator(BaseGenerator):
+    """Uses ringdown.get_td_from_final_mass_spin_driven as a generator function to
     create time-domain ringdown waveforms with higher modes,
-    including both standard and scalar-driven QNMs, in the
+    including both standard and scalar-/vector-induced QNMs, in the
     radiation frame; i.e., with no detector response function applied.
     For more details, see BaseGenerator.
     """
     def __init__(self, variable_args=(), **frozen_params):
-        super(TDomainMassSpinRingdownPlusSDGenerator, self).__init__(ringdown.get_td_from_final_mass_spin_scalar_tensor,
-            variable_args=variable_args, **frozen_params)
-
-
-class TDomainMassSpinRingdownSDGenerator(BaseGenerator):
-    """Uses ringdown.get_td_from_final_mass_spin_scalar_tensor as a generator function to
-    create time-domain ringdown waveforms with higher modes,
-    using scalar-driven QNMs, in the radiation frame;
-    i.e., with no detector response function applied.
-    For more details, see BaseGenerator.
-    """
-    def __init__(self, variable_args=(), **frozen_params):
-        super(TDomainMassSpinRingdownSDGenerator, self).__init__(ringdown.get_td_from_final_mass_spin_scalar_driven,
+        super(TDomainMassSpinRingdownDrivenGenerator, self).__init__(ringdown.get_td_from_final_mass_spin_driven,
             variable_args=variable_args, **frozen_params)
 
 
@@ -1179,10 +1167,8 @@ def select_waveform_generator(approximant):
     elif approximant in ringdown.ringdown_td_approximants:
         if approximant == 'TdQNMfromFinalMassSpin':
             return TDomainMassSpinRingdownGenerator
-        elif approximant == 'TdQNMSDfromFinalMassSpin':
-            return TDomainMassSpinRingdownSDGenerator
-        elif approximant == 'TdQNMplusSDfromFinalMassSpin':
-            return TDomainMassSpinRingdownPlusSDGenerator
+        elif approximant == 'TdQNMfromFinalMassSpinDriven':
+            return TDomainMassSpinRingdownDrivenGenerator
         elif approximant == 'TdQNMfromFreqTau':
             return TDomainFreqTauRingdownGenerator
     # check if supernovae waveform:
