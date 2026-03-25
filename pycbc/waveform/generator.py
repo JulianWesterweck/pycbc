@@ -26,6 +26,7 @@ This modules provides classes for generating waveforms.
 """
 import os
 import logging
+import numpy
 
 from abc import (ABCMeta, abstractmethod)
 
@@ -34,7 +35,7 @@ from .waveform import (FailedWaveformError)
 from . import ringdown
 from . import supernovae
 from . import waveform_modes
-from pycbc.types import TimeSeries
+from pycbc.types import TimeSeries, FrequencySeries
 from pycbc.waveform import parameters
 from pycbc.waveform.utils import apply_fseries_time_shift, \
                                  ceilpow2, apply_fd_time_shift
@@ -659,7 +660,7 @@ class FDomainDetFrameGenerator(BaseFDomainDetFrameGenerator):
         is None, tc may optionally be provided.
     """
 
-    def generate(self, **kwargs):
+    def generate(self, shift_idx=None, freq_len=None, **kwargs):
         """Generates a waveform, applies a time shift and the detector response
         function from the given kwargs.
         """
@@ -671,6 +672,13 @@ class FDomainDetFrameGenerator(BaseFDomainDetFrameGenerator):
             df = self.current_params['delta_f']
             hp = hp.to_frequencyseries(delta_f=df)
             hc = hc.to_frequencyseries(delta_f=df)
+            if shift_idx:
+                hp_data = numpy.zeros(freq_len, dtype=hp.dtype)
+                hc_data = numpy.zeros(freq_len, dtype=hc.dtype)
+                hp_data[shift_idx:shift_idx+len(hp)] = hp.data[:len(hp)]
+                hc_data[shift_idx:shift_idx+len(hc)] = hc.data[:len(hc)]
+                hp = FrequencySeries(hp_data, delta_f=hp.delta_f, epoch=hp.epoch)
+                hc = FrequencySeries(hc_data, delta_f=hc.delta_f, epoch=hc.epoch)
             # time-domain waveforms will not be shifted so that the peak amp
             # happens at the end of the time series (as they are for f-domain),
             # so we add an additional shift to account for it

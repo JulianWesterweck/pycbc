@@ -37,6 +37,8 @@ from pycbc.detector import Detector
 import pycbc.cosmology
 from pycbc import neutron_stars as ns
 from pycbc.constants import YRJUL_SI, MSUN_SI, MTSUN_SI, C_SI, G_SI, PI
+from scipy import constants
+import lal
 
 from .coordinates import (
     spherical_to_cartesian as _spherical_to_cartesian,
@@ -1869,6 +1871,166 @@ def nltides_gw_phase_diff_isco(f_low, f0, amplitude, n, m1, m2):
     return formatreturn(phi_i - phi_l, input_is_array)
 
 
+
+...
+def echo_freq_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
+                                           rel_sign=1, q=1, m=2, s=-2):
+    """Calculates the frequency of the echo signal in arxiv:1811.12283v3
+       from the final mass and spin.
+    Parameters
+    ----------
+    final_mass : float
+        The mass of the final black hole, in solar masses.
+    final_spin : float
+        The dimensionless spin of the final black hole.
+    epsilon : float
+    rel_sign : int, optional
+        Relative sign between the terms, default is +.
+    Returns
+    -------
+    float
+        The echo frequency in Hertz.
+    """
+    s_sqrt = numpy.sqrt(1. - final_spin**2.)
+    rs = numpy.sign(rel_sign)
+    num_factor = q + s*(s+1.)/2.
+    final_mass_sec = final_mass * lal.lal.MSUN_SI * constants.G / constants.c**3.
+    return 1./(4.*numpy.pi*final_mass_sec * (1.+s_sqrt)) \
+            * (m*final_spin + rs*numpy.pi*num_factor*s_sqrt / numpy.abs(numpy.log(epsilon)))
+
+
+def echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
+                                          rel_sign=1, q=1, m=2, s=-2):
+    """Calculates the damping time tau of the echo signal in arxiv:1811.12283v3
+       from the deviation epsilon and the final mass and spin.
+    Parameters
+    ----------
+    final_mass : float
+        The mass of the final black hole, in solar masses.
+    final_spin : float
+        The dimensionless spin of the final black hole.
+    epsilon : float
+        The dimensionless deviation parameter.
+    Returns
+    -------
+    float
+        The damping time of the echo in seconds.
+    """
+    s_sqrt = numpy.sqrt(1. - final_spin**2.)
+    kg_to_sec = constants.G / (constants.c**3)
+    final_mass_msun_sec = final_mass * lal.lal.MSUN_SI * kg_to_sec
+    ln_eps = numpy.abs(numpy.log(epsilon))
+    omega_r = 2. * numpy.pi * echo_freq_from_final_mass_spin_epsilon(
+                                                     final_mass, final_spin,
+                                                     epsilon, rel_sign,
+                                                     q, m, s)
+    return 225. * ln_eps * 1./(2.*final_mass_msun_sec*s_sqrt*omega_r)**5. * \
+                1./(omega_r - final_spin/(final_mass_msun_sec*(1.+s_sqrt)))
+
+def echo_amp_from_final_mass_spin_epsilon(final_mass, final_spin, epsilon,
+                                          distance, e_init, alpha=1.,
+                                          rel_sign=1, q=1, m=2, s=-2):
+    """Calculates the amplitude of the echo signal in arxiv:1811.12283v3
+       from the deviation epsilon and the final mass and spin.
+    Parameters
+    ----------
+    final_mass : float
+        The mass of the final black hole, in solar masses.
+    final_spin : float
+        The dimensionless spin of the final black hole.
+    epsilon : float
+        The dimensionless deviation parameter.
+    distance : float
+        Luminosity distance in Mpc.
+    e_init : float
+        Initial energy available to produce echoes, in solar masses.
+        This is the total energy radiated in the IMR signal,
+        i.e. (m_1 + m_2) - m_final
+    alpha : float, optional
+        Scaling factor for echo amplitude, from 0 to 1.
+    Returns
+    -------
+    float
+        The amplitude of the echo.
+    """
+    kg_to_sec = constants.G / (constants.c**3)
+    omega_r = 2.*numpy.pi*echo_freq_from_final_mass_spin_epsilon(final_mass,
+                                        final_spin, epsilon, rel_sign,
+                                        q, m, s)
+    tau = echo_tau_from_final_mass_spin_epsilon(final_mass, final_spin,
+                                                epsilon, rel_sign,
+                                                q, m, s)
+    delta_e_sec = e_init * (1. + final_spin**2./8.) * lal.lal.MSUN_SI * kg_to_sec
+    distance_sec = distance * 1.e6 * constants.parsec / constants.c
+
+    return alpha * 4./(omega_r * distance_sec) * numpy.sqrt(delta_e_sec/tau)
+
+def mass_to_time(mass):
+    """Convert mass (solar masses) to time (seconds).
+    Parameters
+    ----------
+    mass : float
+        Mass to convert in solar masses.
+    Returns
+    -------
+    float
+        Time
+    """
+    M_sun = lal.lal.MSUN_SI
+    return mass * M_sun * constants.G / constants.c**3
+
+def r_mode_freq(final_mass, final_spin, gamma):
+    """Calculate r-mode frequency of black hole alternative.
+    Parameters
+    ----------
+    final_mass : float
+        Final mass of compact object in solar masses.
+    final_spin : float
+        Dimensionless final spin of compact object.
+    gamma : float
+        Dimensionless factor, quantifies magnitude of
+        relativistic corrections.
+    Returns
+    -------
+    float
+        R-mode frequency in Hz.
+    """
+    mass_sec = mass_to_time(final_mass)
+    rplus = mass_sec * (1. + numpy.sqrt(1-final_spin**2))
+    return gamma * final_spin / (2. * rplus) / (2*numpy.pi)
+
+def r_mode_amp(beta, gamma, final_mass, final_spin, distance, epsilon):
+    """Calculate r-mode amplitude of black hole alternative.
+    Parameters
+    ----------
+    beta : float
+        
+    gamma : float
+        Dimensionless factor, quantifies magnitude of
+        relativistic corrections.
+    final_mass : float
+        Final mass of compact object in solar masses.
+    final_spin : float
+        Dimensionless final spin of compact object.
+    distance : float
+        Luminosity distance in Mpc.
+    epsilon : float
+        The dimensionless deviation parameter, placing the
+        surface at r=(1+epsilon)r_+.
+    Returns
+    -------
+    float
+        Dimensionless strain amplitude of r-mode signal at detector.
+    """
+    mass_sec = mass_to_time(final_mass)
+    distance_sec = distance * 1.e6 * constants.parsec / constants.c
+    r_surf = 2. * mass_sec * (1. + epsilon)
+    rplus = mass_sec * (1. + numpy.sqrt(1-final_spin**2.))
+    omega = final_spin / (2. * rplus)
+    return numpy.sqrt(1024. * numpy.pi**3. / 375.) * beta \
+                * mass_sec/distance_sec * (r_surf * gamma * omega)**3.
+
+
 __all__ = ['dquadmon_from_lambda', 'lambda_tilde',
            'lambda_from_mass_tov_file', 'primary_mass',
            'secondary_mass', 'mtotal_from_mass1_mass2',
@@ -1909,5 +2071,9 @@ __all__ = ['dquadmon_from_lambda', 'lambda_tilde',
            'remnant_mass_from_mass1_mass2_cartesian_spin_eos',
            'lambda1_from_delta_lambda_tilde_lambda_tilde',
            'lambda2_from_delta_lambda_tilde_lambda_tilde',
-           'delta_lambda_tilde', 'hypertriangle'
+           'delta_lambda_tilde', 'hypertriangle',
+           'echo_freq_from_final_mass_spin_epsilon',
+           'echo_tau_from_final_mass_spin_epsilon',
+           'echo_amp_from_final_mass_spin_epsilon',
+           'mass_to_time', 'r_mode_freq', 'r_mode_amp'
           ]
